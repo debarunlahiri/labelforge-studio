@@ -59,6 +59,39 @@ export default function TemplateLibrary() {
     }
   }
 
+  const handleExport = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const data = await window.electronAPI?.templates.exportTemplate(id)
+      if (data) {
+        const json = JSON.stringify(data, null, 2)
+        const blob = new Blob([json], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${data.template?.name || 'template'}.lfx.json`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch {}
+  }
+
+  const handleImport = async () => {
+    try {
+      const filePath = await window.electronAPI?.app.selectFile({
+        title: 'Import Template',
+        filters: [{ name: 'LabelForge Template', extensions: ['json', 'lfx'] }],
+      })
+      if (!filePath) return
+      const response = await fetch(`file://${filePath}`)
+      const data = await response.json()
+      const result = await window.electronAPI?.templates.import(data)
+      if (result?.success) {
+        await loadTemplates()
+      }
+    } catch {}
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -68,6 +101,12 @@ export default function TemplateLibrary() {
           className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
         >
           + New Template
+        </button>
+        <button
+          onClick={handleImport}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+        >
+          Import
         </button>
       </div>
 
@@ -142,11 +181,25 @@ export default function TemplateLibrary() {
                 <span>Created: {new Date(template.created_at).toLocaleDateString()}</span>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    onClick={(e) => handleDuplicate(template.id, e)}
-                    className="rounded px-2 py-1 text-[10px] hover:bg-blue-50 hover:text-blue-600"
-                    title="Duplicate"
+                    onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/preview`) }}
+                    className="rounded px-2 py-1 text-[10px] hover:bg-green-50 hover:text-green-600"
+                    title="Preview"
                   >
-                    Copy
+                    Preview
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/versions`) }}
+                    className="rounded px-2 py-1 text-[10px] hover:bg-indigo-50 hover:text-indigo-600"
+                    title="Version History"
+                  >
+                    Versions
+                  </button>
+                  <button
+                    onClick={(e) => handleExport(template.id, e)}
+                    className="rounded px-2 py-1 text-[10px] hover:bg-cyan-50 hover:text-cyan-600"
+                    title="Export"
+                  >
+                    Export
                   </button>
                   <button
                     onClick={(e) => handleArchive(template.id, e)}

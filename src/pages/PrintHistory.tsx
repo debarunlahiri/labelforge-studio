@@ -13,6 +13,10 @@ export default function PrintHistory() {
 
   useEffect(() => {
     loadJobs()
+    const interval = setInterval(() => {
+      loadJobs()
+    }, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   const loadJobs = async () => {

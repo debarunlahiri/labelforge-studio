@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import PrintTimeInput from './PrintTimeInput'
 
 interface PrintJob {
   id: string
@@ -33,6 +34,9 @@ export default function PrintScreen() {
   const [selectedPrinter, setSelectedPrinter] = useState('')
   const [copies, setCopies] = useState(1)
   const [isPrinting, setIsPrinting] = useState(false)
+  const [showPrintInputDialog, setShowPrintInputDialog] = useState(false)
+  const [printTimeValues, setPrintTimeValues] = useState<Record<string, string>>({})
+  const [printTimeFields] = useState<Array<{id: string; label: string; type: string; required: boolean; options?: string[]}>>([])
 
   useEffect(() => {
     loadData()
@@ -68,85 +72,122 @@ export default function PrintScreen() {
     }
   }
 
+  const onPrintClick = () => {
+    if (printTimeFields.length > 0) {
+      setShowPrintInputDialog(true)
+    } else {
+      handlePrint()
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Print Labels</h1>
+    <>
+      <div className="mx-auto max-w-3xl space-y-6">
+        <h1 className="text-2xl font-bold">Print Labels</h1>
 
-      <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold">Select Template</h2>
-        {templates.length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
-            No approved templates available. Please create and approve a template first.
+        <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Select Template</h2>
+          {templates.length === 0 ? (
+            <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
+              No approved templates available. Please create and approve a template first.
+            </div>
+          ) : (
+            <select
+              value={selectedTemplate}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select a template...</option>
+              {templates.map((t: any) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.label_width}{t.unit} x {t.label_height}{t.unit} @ {t.dpi} DPI)
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Select Printer</h2>
+          {printers.length === 0 ? (
+            <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
+              No printers available. Please register a printer first.
+            </div>
+          ) : (
+            <select
+              value={selectedPrinter}
+              onChange={(e) => setSelectedPrinter(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select a printer...</option>
+              {printers.map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.printer_type || 'Unknown'} - {p.status})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Print Options</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Number of Copies</label>
+              <input
+                type="number"
+                min={1}
+                value={copies}
+                onChange={(e) => setCopies(Number(e.target.value))}
+                className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
           </div>
-        ) : (
-          <select
-            value={selectedTemplate}
-            onChange={(e) => setSelectedTemplate(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        </div>
+
+        <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Print-Time Fields</h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Print-time fields will be available when data sources are configured on the template.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => selectedTemplate && navigate(`/templates/${selectedTemplate}/preview`)}
+            disabled={!selectedTemplate}
+            className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
           >
-            <option value="">Select a template...</option>
-            {templates.map((t: any) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.label_width}{t.unit} x {t.label_height}{t.unit} @ {t.dpi} DPI)
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold">Select Printer</h2>
-        {printers.length === 0 ? (
-          <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
-            No printers available. Please register a printer first.
-          </div>
-        ) : (
-          <select
-            value={selectedPrinter}
-            onChange={(e) => setSelectedPrinter(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            Preview
+          </button>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-medium hover:bg-slate-50"
           >
-            <option value="">Select a printer...</option>
-            {printers.map((p: any) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.printer_type || 'Unknown'} - {p.status})
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold">Print Options</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Number of Copies</label>
-            <input
-              type="number"
-              min={1}
-              value={copies}
-              onChange={(e) => setCopies(Number(e.target.value))}
-              className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
+            Cancel
+          </button>
+          <button
+            onClick={onPrintClick}
+            disabled={!selectedTemplate || !selectedPrinter || isPrinting}
+            className="rounded-lg bg-[var(--color-primary)] px-6 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
+          >
+            {isPrinting ? 'Printing...' : 'Print'}
+          </button>
         </div>
       </div>
 
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-medium hover:bg-slate-50"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handlePrint}
-          disabled={!selectedTemplate || !selectedPrinter || isPrinting}
-          className="rounded-lg bg-[var(--color-primary)] px-6 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
-        >
-          {isPrinting ? 'Printing...' : 'Print'}
-        </button>
-      </div>
-    </div>
+      {showPrintInputDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-semibold">Print-Time Input</h2>
+            <PrintTimeInput
+              fields={printTimeFields}
+              onSubmit={(values) => { setPrintTimeValues(values); setShowPrintInputDialog(false); handlePrint() }}
+              onCancel={() => setShowPrintInputDialog(false)}
+            />
+          </div>
+        </div>
+      )}
+    </>
   )
 }

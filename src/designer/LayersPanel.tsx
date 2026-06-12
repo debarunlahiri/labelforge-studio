@@ -4,6 +4,8 @@ interface LayersPanelProps {
   objects: LabelObject[]
   selectedObjectId: string | null
   onSelect: (id: string | null) => void
+  onMoveUp: (id: string) => void
+  onMoveDown: (id: string) => void
 }
 
 const typeIcons: Record<string, string> = {
@@ -19,7 +21,7 @@ const typeIcons: Record<string, string> = {
   database: 'DB',
 }
 
-export default function LayersPanel({ objects, selectedObjectId, onSelect }: LayersPanelProps) {
+export default function LayersPanel({ objects, selectedObjectId, onSelect, onMoveUp, onMoveDown }: LayersPanelProps) {
   return (
     <div className="w-52 border-r border-[var(--border-color)] bg-white flex flex-col">
       <div className="flex h-8 items-center border-b border-[var(--border-color)] px-3">
@@ -46,6 +48,10 @@ export default function LayersPanel({ objects, selectedObjectId, onSelect }: Lay
                 {typeIcons[obj.type] || '?'}
               </span>
               <span className="flex-1 truncate">{obj.name}</span>
+              <div className="flex gap-0.5">
+                <button onClick={(e) => { e.stopPropagation(); onMoveUp(obj.id) }} className="text-[9px] px-1 hover:bg-slate-200 rounded" title="Move Up">▲</button>
+                <button onClick={(e) => { e.stopPropagation(); onMoveDown(obj.id) }} className="text-[9px] px-1 hover:bg-slate-200 rounded" title="Move Down">▼</button>
+              </div>
               {obj.locked && <span className="text-[10px] text-slate-400">🔒</span>}
               {!obj.visible && <span className="text-[10px] text-slate-400">👁‍🗨</span>}
             </div>

@@ -14,6 +14,11 @@ interface ToolbarProps {
   templateName: string
   onToggleDataSource?: () => void
   showDataSource?: boolean
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
+  onAlign?: (action: string) => void
 }
 
 const objectTypes = [
@@ -31,6 +36,7 @@ export default function Toolbar({
   onSave, isSaving, onAddObject, onToggleGrid, onToggleSnap,
   showGrid, snapToGrid, zoom, onZoom, onZoomFit, onDelete,
   hasSelection, templateName, onToggleDataSource, showDataSource,
+  onUndo, onRedo, canUndo, canRedo, onAlign,
 }: ToolbarProps) {
   return (
     <div className="flex h-10 items-center justify-between border-b border-[var(--border-color)] bg-white px-3">
@@ -45,6 +51,23 @@ export default function Toolbar({
           {isSaving ? 'Saving...' : 'Save'}
         </button>
         <div className="h-5 w-px bg-[var(--border-color)]" />
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="rounded px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-30"
+          title="Undo (Ctrl+Z)"
+        >
+          ↶
+        </button>
+        <button
+          onClick={onRedo}
+          disabled={!canRedo}
+          className="rounded px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-30"
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          ↷
+        </button>
+        <div className="h-5 w-px bg-[var(--border-color)]" />
         {objectTypes.map((obj) => (
           <button
             key={obj.type}
@@ -56,6 +79,17 @@ export default function Toolbar({
           </button>
         ))}
         <div className="h-5 w-px bg-[var(--border-color)]" />
+        {hasSelection && onAlign && (
+          <>
+            <button onClick={() => onAlign('alignLeft')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Align Left">←</button>
+            <button onClick={() => onAlign('alignCenterHorizontal')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Center H">↔</button>
+            <button onClick={() => onAlign('alignRight')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Align Right">→</button>
+            <button onClick={() => onAlign('alignTop')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Align Top">↑</button>
+            <button onClick={() => onAlign('alignCenterVertical')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Center V">↕</button>
+            <button onClick={() => onAlign('alignBottom')} className="rounded px-1.5 py-1 text-xs hover:bg-slate-100" title="Align Bottom">↓</button>
+            <div className="h-5 w-px bg-[var(--border-color)]" />
+          </>
+        )}
         {hasSelection && (
           <button
             onClick={onDelete}
@@ -106,13 +140,16 @@ export default function Toolbar({
           Snap
         </button>
         {onToggleDataSource && (
-          <button
-            onClick={onToggleDataSource}
-            className={`rounded px-2 py-1 text-xs ${showDataSource ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-100'}`}
-            title="Data Sources"
-          >
-            Data
-          </button>
+          <>
+            <div className="h-5 w-px bg-[var(--border-color)]" />
+            <button
+              onClick={onToggleDataSource}
+              className={`rounded px-2 py-1 text-xs ${showDataSource ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-100'}`}
+              title="Data Sources"
+            >
+              Data
+            </button>
+          </>
         )}
       </div>
     </div>

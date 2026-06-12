@@ -33,7 +33,7 @@ interface BarcodeRendererProps {
     errorCorrectionLevel?: string
   }
   selected?: boolean
-  onClick?: () => void
+  onClick?: (e: any) => void
   onDragEnd?: (x: number, y: number) => void
 }
 

@@ -9,6 +9,9 @@ import PropertiesPanel from '../designer/PropertiesPanel'
 import LayersPanel from '../designer/LayersPanel'
 import Toolbar from '../designer/Toolbar'
 import DataSourcePanel from '../designer/DataSourcePanel'
+import Ruler from '../designer/Ruler'
+import BarcodeRenderer from '../designer/BarcodeRenderer'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 
 const UNIT_TO_PX: Record<string, number> = {
   mm: 3.78,
@@ -28,9 +31,11 @@ export default function TemplateDesigner() {
   const navigate = useNavigate()
   const { currentTemplate, loadTemplate, createTemplate, updateTemplate, saveVersion, loadVersions, versions } = useTemplateStore()
   const {
-    objects, selectedObjectId, zoom, showGrid, snapToGrid, gridSize,
-    addObject, updateObject, deleteObject, selectObject, setZoom, toggleGrid, toggleSnap,
+    objects, selectedObjectId, selectedObjectIds, zoom, showGrid, snapToGrid, gridSize,
+    addObject, updateObject, deleteObject, selectObject, selectObjects, toggleObjectSelection, deleteSelectedObjects, setZoom, toggleGrid, toggleSnap,
     clearObjects, loadObjects, canvasWidth, canvasHeight, setCanvasSize,
+    undo, redo, canUndo, canRedo,
+    copyObject, pasteObject, duplicateObject, reorderObjects,
   } = useDesignerStore()
 
   const [showNewWizard, setShowNewWizard] = useState(!id)
@@ -55,7 +60,9 @@ export default function TemplateDesigner() {
   const [isSaving, setIsSaving] = useState(false)
   const [showDataSource, setShowDataSource] = useState(false)
   const [dataSources, setDataSources] = useState<DataSourceConfig[]>([])
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const stageRef = useRef<any>(null)
+  const autoSaveTimerRef = useRef<any>(null)
 
   useEffect(() => {
     if (id) {
@@ -89,6 +96,15 @@ export default function TemplateDesigner() {
     }
   }, [currentTemplate])
 
+  useEffect(() => {
+    if (!currentTemplate || !id || objects.length === 0) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      handleSave(true)
+    }, 30000)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  }, [objects, currentTemplate, id])
+
   const handleCreateTemplate = async () => {
     if (!wizardData.name.trim()) return
     const result = await createTemplate({
@@ -109,7 +125,7 @@ export default function TemplateDesigner() {
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (silent = false) => {
     if (!currentTemplate) return
     setIsSaving(true)
     try {
@@ -119,6 +135,7 @@ export default function TemplateDesigner() {
         unit: currentTemplate.unit,
         dpi: currentTemplate.dpi,
         objects: objects,
+        dataSources: dataSources,
         printSettings: {
           copies: 1,
           printerLanguage: 'pdf',
@@ -126,8 +143,9 @@ export default function TemplateDesigner() {
       }
       await saveVersion(currentTemplate.id, {
         template_json: JSON.stringify(canvasData),
-        change_comment: 'Auto save',
+        change_comment: silent ? 'Auto save' : 'Manual save',
       })
+      setLastSavedAt(new Date().toLocaleTimeString())
     } finally {
       setIsSaving(false)
     }
@@ -254,36 +272,55 @@ export default function TemplateDesigner() {
 
   const handleStageClick = (e: any) => {
     if (e.target === e.target.getStage() || e.target.name() === 'canvas-bg') {
-      selectObject(null)
+      if (!e.evt.shiftKey) {
+        selectObject(null)
+      }
     }
   }
 
-  const handleObjectClick = (objId: string) => {
-    selectObject(objId)
+  const handleObjectClick = (objId: string, shiftKey: boolean) => {
+    if (shiftKey) {
+      toggleObjectSelection(objId)
+    } else {
+      selectObject(objId)
+    }
   }
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedObjectId) {
-      deleteObject(selectedObjectId)
+    if (selectedObjectIds.length > 0) {
+      deleteSelectedObjects()
     }
-  }, [selectedObjectId, deleteObject])
+  }, [selectedObjectIds, deleteSelectedObjects])
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-        handleDeleteSelected()
-      }
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === 's') {
-          e.preventDefault()
-          handleSave()
-        }
-      }
+  const handleAlign = useCallback((action: string) => {
+    if (!selectedObjectId) return
+    const obj = objects.find(o => o.id === selectedObjectId)
+    if (!obj) return
+    switch (action) {
+      case 'alignLeft': updateObject(selectedObjectId, { x: 0 }); break
+      case 'alignRight': updateObject(selectedObjectId, { x: canvasWidth - obj.width }); break
+      case 'alignTop': updateObject(selectedObjectId, { y: 0 }); break
+      case 'alignBottom': updateObject(selectedObjectId, { y: canvasHeight - obj.height }); break
+      case 'alignCenterHorizontal': updateObject(selectedObjectId, { x: (canvasWidth - obj.width) / 2 }); break
+      case 'alignCenterVertical': updateObject(selectedObjectId, { y: (canvasHeight - obj.height) / 2 }); break
+      case 'distributeHorizontally': break
+      case 'distributeVertically': break
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleDeleteSelected])
+  }, [selectedObjectId, objects, canvasWidth, canvasHeight, updateObject])
+
+  useKeyboardShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onDelete: handleDeleteSelected,
+    onSave: handleSave,
+    onCopy: () => copyObject(),
+    onPaste: () => pasteObject(),
+    onCut: () => { copyObject(); handleDeleteSelected() },
+    onDuplicate: () => duplicateObject(),
+    onZoomIn: () => setZoom(zoom + 0.1),
+    onZoomOut: () => setZoom(zoom - 0.1),
+    onSelectAll: () => { selectObjects(objects.map(o => o.id)) },
+  })
 
   const selectedObject = objects.find(o => o.id === selectedObjectId)
 
@@ -297,8 +334,8 @@ export default function TemplateDesigner() {
             x={obj.x}
             y={obj.y}
             rotation={obj.rotation}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragEnd={(e) => {
               updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
@@ -308,9 +345,9 @@ export default function TemplateDesigner() {
               width={obj.width}
               height={obj.height}
               fill={textObj.backgroundColor === 'transparent' ? '#FFFFFF' : textObj.backgroundColor}
-              stroke={selectedObjectId === obj.id ? '#2563eb' : 'transparent'}
-              strokeWidth={selectedObjectId === obj.id ? 1 : 0}
-              strokeEnabled={selectedObjectId === obj.id}
+              stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : 'transparent'}
+              strokeWidth={selectedObjectIds.includes(obj.id) ? 1 : 0}
+              strokeEnabled={selectedObjectIds.includes(obj.id)}
             />
             <Text
               text={textObj.value}
@@ -333,85 +370,45 @@ export default function TemplateDesigner() {
       case 'barcode': {
         const bcObj = obj as BarcodeObject
         return (
-          <Group
+          <BarcodeRenderer
             key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
-            draggable
-            onDragEnd={(e) => {
-              updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
+            value={bcObj.value}
+            barcodeType={bcObj.barcodeType}
+            width={obj.width}
+            height={obj.height}
+            options={{
+              showHumanReadable: bcObj.showHumanReadable,
+              moduleWidth: bcObj.moduleWidth,
+              barcodeHeight: bcObj.barcodeHeight,
+              quietZone: bcObj.quietZone,
+              foregroundColor: bcObj.foregroundColor,
+              backgroundColor: bcObj.backgroundColor,
             }}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill={bcObj.backgroundColor}
-              stroke={selectedObjectId === obj.id ? '#2563eb' : '#333'}
-              strokeWidth={selectedObjectId === obj.id ? 2 : 1}
-            />
-            <Text
-              text={`[${bcObj.barcodeType}]`}
-              fontSize={12}
-              fill={bcObj.foregroundColor}
-              width={obj.width}
-              height={obj.height - (bcObj.showHumanReadable ? 16 : 0)}
-              align="center"
-              verticalAlign="middle"
-            />
-            {bcObj.showHumanReadable && (
-              <Text
-                text={bcObj.value}
-                fontSize={10}
-                fill={bcObj.foregroundColor}
-                width={obj.width}
-                y={obj.height - 16}
-                align="center"
-              />
-            )}
-          </Group>
+            selected={selectedObjectIds.includes(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onDragEnd={(x, y) => updateObject(obj.id, { x, y })}
+          />
         )
       }
       case 'qrcode': {
         const qrObj = obj as QRCodeObject
         return (
-          <Group
+          <BarcodeRenderer
             key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
-            draggable
-            onDragEnd={(e) => {
-              updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
+            value={qrObj.value}
+            barcodeType="QRCode"
+            width={obj.width}
+            height={obj.height}
+            options={{
+              errorCorrectionLevel: qrObj.errorCorrectionLevel,
+              quietZone: qrObj.quietZone,
+              foregroundColor: qrObj.foregroundColor,
+              backgroundColor: qrObj.backgroundColor,
             }}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill={qrObj.backgroundColor}
-              stroke={selectedObjectId === obj.id ? '#2563eb' : '#333'}
-              strokeWidth={selectedObjectId === obj.id ? 2 : 1}
-            />
-            <Rect
-              x={8} y={8}
-              width={obj.width - 16}
-              height={obj.height - 16}
-              fill={qrObj.foregroundColor}
-            />
-            <Text
-              text="QR"
-              fontSize={12}
-              fill="white"
-              width={obj.width}
-              height={obj.height}
-              align="center"
-              verticalAlign="middle"
-            />
-          </Group>
+            selected={selectedObjectIds.includes(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onDragEnd={(x, y) => updateObject(obj.id, { x, y })}
+          />
         )
       }
       case 'shape': {
@@ -425,11 +422,11 @@ export default function TemplateDesigner() {
             height={obj.height}
             rotation={obj.rotation}
             fill={shapeObj.fillColor}
-            stroke={selectedObjectId === obj.id ? '#2563eb' : shapeObj.borderColor}
-            strokeWidth={selectedObjectId === obj.id ? 2 : shapeObj.borderWidth}
+            stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : shapeObj.borderColor}
+            strokeWidth={selectedObjectIds.includes(obj.id) ? 2 : shapeObj.borderWidth}
             cornerRadius={shapeObj.cornerRadius}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragEnd={(e) => {
               updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
@@ -443,15 +440,145 @@ export default function TemplateDesigner() {
           <Line
             key={obj.id}
             points={[obj.x, obj.y, obj.x + lineObj.endX, obj.y + lineObj.endY]}
-            stroke={selectedObjectId === obj.id ? '#2563eb' : lineObj.lineColor}
+            stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : lineObj.lineColor}
             strokeWidth={lineObj.lineThickness}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragEnd={(e) => {
               updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
             }}
           />
+        )
+      }
+      case 'counter': {
+        const cntObj = obj as any
+        const display = `${cntObj.prefix || ''}${String(cntObj.startValue ?? 1).padStart(cntObj.padding ?? 4, '0')}${cntObj.suffix || ''}`
+        return (
+          <Group
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
+            draggable
+            onDragEnd={(e) => { updateObject(obj.id, { x: e.target.x(), y: e.target.y() }) }}
+          >
+            <Rect
+              width={obj.width}
+              height={obj.height}
+              fill="white"
+              stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : '#999'}
+              strokeWidth={selectedObjectIds.includes(obj.id) ? 2 : 1}
+            />
+            <Text
+              text={display}
+              fontSize={14}
+              fontFamily="monospace"
+              fill="#333"
+              width={obj.width}
+              height={obj.height}
+              align="center"
+              verticalAlign="middle"
+            />
+          </Group>
+        )
+      }
+      case 'datetime': {
+        const dtObj = obj as any
+        const dateStr = new Date().toLocaleDateString()
+        return (
+          <Group
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
+            draggable
+            onDragEnd={(e) => { updateObject(obj.id, { x: e.target.x(), y: e.target.y() }) }}
+          >
+            <Rect
+              width={obj.width}
+              height={obj.height}
+              fill="white"
+              stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : '#999'}
+              strokeWidth={selectedObjectIds.includes(obj.id) ? 2 : 1}
+            />
+            <Text
+              text={dtObj.format ? `{{${dtObj.format}}}` : dateStr}
+              fontSize={12}
+              fill="#333"
+              width={obj.width}
+              height={obj.height}
+              align="center"
+              verticalAlign="middle"
+            />
+          </Group>
+        )
+      }
+      case 'image': {
+        const imgObj = obj as any
+        return (
+          <Group
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
+            draggable
+            onDragEnd={(e) => { updateObject(obj.id, { x: e.target.x(), y: e.target.y() }) }}
+          >
+            <Rect
+              width={obj.width}
+              height={obj.height}
+              fill="#f0f0f0"
+              stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : '#999'}
+              strokeWidth={selectedObjectIds.includes(obj.id) ? 2 : 1}
+            />
+            <Text
+              text="IMG"
+              fontSize={14}
+              fill="#666"
+              width={obj.width}
+              height={obj.height}
+              align="center"
+              verticalAlign="middle"
+            />
+          </Group>
+        )
+      }
+      case 'rfid': {
+        return (
+          <Group
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
+            draggable
+            onDragEnd={(e) => { updateObject(obj.id, { x: e.target.x(), y: e.target.y() }) }}
+          >
+            <Rect
+              width={obj.width}
+              height={obj.height}
+              fill="#e8f4f8"
+              stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : '#0066cc'}
+              strokeWidth={selectedObjectIds.includes(obj.id) ? 2 : 1}
+            />
+            <Text
+              text="RFID"
+              fontSize={12}
+              fill="#0066cc"
+              width={obj.width}
+              height={obj.height}
+              align="center"
+              verticalAlign="middle"
+            />
+          </Group>
         )
       }
       default:
@@ -463,10 +590,10 @@ export default function TemplateDesigner() {
             width={obj.width}
             height={obj.height}
             fill="#E0E0E0"
-            stroke={selectedObjectId === obj.id ? '#2563eb' : '#999'}
+            stroke={selectedObjectIds.includes(obj.id) ? '#2563eb' : '#999'}
             strokeWidth={1}
-            onClick={() => handleObjectClick(obj.id)}
-            onTap={() => handleObjectClick(obj.id)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragEnd={(e) => {
               updateObject(obj.id, { x: e.target.x(), y: e.target.y() })
@@ -617,37 +744,85 @@ export default function TemplateDesigner() {
         templateName={currentTemplate?.name || 'Untitled'}
         onToggleDataSource={() => setShowDataSource(!showDataSource)}
         showDataSource={showDataSource}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onAlign={handleAlign}
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <LayersPanel objects={objects} selectedObjectId={selectedObjectId} onSelect={selectObject} />
+        <LayersPanel
+          objects={objects}
+          selectedObjectId={selectedObjectId}
+          onSelect={selectObject}
+          onMoveUp={(id) => {
+            const idx = objects.findIndex(o => o.id === id)
+            if (idx > 0) {
+              const newObjects = [...objects]
+              const temp = newObjects[idx]
+              newObjects[idx] = newObjects[idx - 1]
+              newObjects[idx - 1] = temp
+              reorderObjects(newObjects)
+            }
+          }}
+          onMoveDown={(id) => {
+            const idx = objects.findIndex(o => o.id === id)
+            if (idx < objects.length - 1) {
+              const newObjects = [...objects]
+              const temp = newObjects[idx]
+              newObjects[idx] = newObjects[idx + 1]
+              newObjects[idx + 1] = temp
+              reorderObjects(newObjects)
+            }
+          }}
+        />
 
-        <div className="flex-1 overflow-auto bg-slate-100 p-4">
-          <div className="flex items-center justify-center min-h-full">
-            <Stage
-              ref={stageRef}
-              width={canvasWidth * zoom + 40}
-              height={canvasHeight * zoom + 40}
-              onClick={handleStageClick}
-              scale={{ x: zoom, y: zoom }}
-            >
-              <Layer offsetX={-20} offsetY={-20}>
-                {gridLines}
-                <Rect
-                  name="canvas-bg"
-                  x={0}
-                  y={0}
-                  width={canvasWidth}
-                  height={canvasHeight}
-                  fill="white"
-                  shadowColor="rgba(0,0,0,0.15)"
-                  shadowBlur={10}
-                  shadowOffsetX={2}
-                  shadowOffsetY={2}
-                />
-                {objects.filter(o => o.visible).map(renderObject)}
-              </Layer>
-            </Stage>
+        <div className="flex-1 overflow-auto bg-slate-100">
+          <div className="flex items-center justify-center min-h-full" style={{ padding: '16px' }}>
+            <div style={{ display: 'inline-grid', gridTemplateColumns: '24px auto', gridTemplateRows: '24px auto' }}>
+              <div />
+              <div style={{ overflow: 'hidden', height: '24px' }}>
+                <Stage width={canvasWidth * zoom + 4} height={24}>
+                  <Layer>
+                    <Ruler size={canvasWidth * zoom} zoom={zoom} unit={currentTemplate?.unit || 'mm'} offset={0} direction="horizontal" />
+                  </Layer>
+                </Stage>
+              </div>
+              <div style={{ overflow: 'hidden', width: '24px' }}>
+                <Stage width={24} height={canvasHeight * zoom + 4}>
+                  <Layer>
+                    <Ruler size={canvasHeight * zoom} zoom={zoom} unit={currentTemplate?.unit || 'mm'} offset={0} direction="vertical" />
+                  </Layer>
+                </Stage>
+              </div>
+              <div>
+                <Stage
+                  ref={stageRef}
+                  width={canvasWidth * zoom + 4}
+                  height={canvasHeight * zoom + 4}
+                  onClick={handleStageClick}
+                  scale={{ x: zoom, y: zoom }}
+                >
+                  <Layer offsetX={-2} offsetY={-2}>
+                    {gridLines}
+                    <Rect
+                      name="canvas-bg"
+                      x={0}
+                      y={0}
+                      width={canvasWidth}
+                      height={canvasHeight}
+                      fill="white"
+                      shadowColor="rgba(0,0,0,0.15)"
+                      shadowBlur={10}
+                      shadowOffsetX={2}
+                      shadowOffsetY={2}
+                    />
+                    {objects.filter(o => o.visible).map(renderObject)}
+                  </Layer>
+                </Stage>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -681,6 +856,7 @@ export default function TemplateDesigner() {
           <span>Zoom: {Math.round(zoom * 100)}%</span>
           <span>{showGrid ? 'Grid: On' : 'Grid: Off'}</span>
           <span>{snapToGrid ? 'Snap: On' : 'Snap: Off'}</span>
+          {lastSavedAt && <span>Saved: {lastSavedAt}</span>}
         </div>
       </div>
     </div>

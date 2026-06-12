@@ -88,38 +88,54 @@ labelforge-studio/
 │   │       ├── printJobs.ts
 │   │       ├── auditLogs.ts
 │   │       └── globalVariables.ts
+│   ├── preprocessing/
+│   │   ├── dataSourceEngine.ts      # CSV/JSON/SQLite parsing, field extraction
+│   │   └── formulaEngine.ts        # Safe expression parser (math, string, date, conditional)
+│   ├── printing/
+│   │   └── labelRenderer.ts        # Server-side rendering (ZPL/EPL/TSPL stubs)
 │   └── ipc/
 │       └── index.ts                # All IPC handlers
 ├── src/                             # React renderer app
 │   ├── main.tsx                     # React entry
-│   ├── App.tsx                      # Routes & auth guard
+│   ├── App.tsx                      # Routes & auth guard (lazy-loaded pages)
 │   ├── index.css                    # Tailwind + custom properties
-│   ├── types/index.ts              # TypeScript types (40+ interfaces)
+│   ├── types/index.ts              # TypeScript types (20+ interfaces)
 │   ├── store/                       # Zustand stores
-│   │   ├── authStore.ts
-│   │   ├── templateStore.ts
-│   │   ├── designerStore.ts
-│   │   └── appStore.ts
+│   │   ├── authStore.ts            # Auth with auto-login bypass
+│   │   ├── templateStore.ts        # Template CRUD & versions
+│   │   ├── designerStore.ts        # Objects, undo/redo, clipboard, multi-select
+│   │   └── appStore.ts             # UI state
 │   ├── components/
 │   │   ├── Layout.tsx
 │   │   ├── Sidebar.tsx
 │   │   └── Header.tsx
 │   ├── pages/
 │   │   ├── Login.tsx
-│   │   ├── Dashboard.tsx
-│   │   ├── TemplateLibrary.tsx
-│   │   ├── TemplateDesigner.tsx
-│   │   ├── PrintScreen.tsx
-│   │   ├── PrintHistory.tsx
+│   │   ├── Dashboard.tsx           # Stats, recent templates, quick actions
+│   │   ├── TemplateLibrary.tsx      # Search, filter, export/import
+│   │   ├── TemplateDesigner.tsx     # Full designer with rulers, grid, zoom
+│   │   ├── PrintScreen.tsx         # Print workflow with print-time input
+│   │   ├── PrintPreview.tsx        # PDF/PNG/ZPL export
+│   │   ├── PrintHistory.tsx        # Job history with auto-refresh
+│   │   ├── TemplateVersions.tsx     # Version history with diff comparison
+│   │   ├── PrintTimeInput.tsx       # Dynamic form for print-time fields
 │   │   ├── PrinterStatus.tsx
 │   │   ├── UserManagement.tsx
 │   │   ├── Settings.tsx
 │   │   ├── AuditLogs.tsx
 │   │   └── GlobalVariables.tsx
-│   └── designer/
-│       ├── Toolbar.tsx
-│       ├── PropertiesPanel.tsx
-│       └── LayersPanel.tsx
+│   ├── designer/
+│   │   ├── Toolbar.tsx              # Undo/redo, align, zoom, grid, data source
+│   │   ├── PropertiesPanel.tsx      # Object property editor
+│   │   ├── LayersPanel.tsx          # Layer list with drag reorder
+│   │   ├── BarcodeRenderer.tsx      # bwip-js Konva barcode rendering
+│   │   ├── DataSourcePanel.tsx       # 12-type data source config
+│   │   ├── AlignTools.tsx           # Alignment action buttons
+│   │   └── Ruler.tsx                # Konva ruler component (H/V)
+│   ├── hooks/
+│   │   └── useKeyboardShortcuts.ts  # Ctrl+Z, Ctrl+Shift+Z, Ctrl+S, Del, Ctrl+C/V/X/D, Ctrl+A
+│   └── utils/
+│       └── labelRenderer.ts         # Canvas/PNG/PDF/ZPL rendering utilities
 ├── vite.config.ts
 ├── package.json
 └── tsconfig*.json
@@ -131,7 +147,7 @@ labelforge-studio/
 |----------|----------|------|
 | admin | admin | Super Admin |
 
-The database is seeded on first launch with an admin user, default roles (Super Admin, Admin, Designer, Approver, Print Operator, Auditor), permissions, and global variables.
+Auto-login is enabled by default (`AUTO_LOGIN_ENABLED` flag in authStore). The database is seeded on first launch with an admin user, default roles (Super Admin, Admin, Designer, Approver, Print Operator, Auditor), permissions, and global variables.
 
 ## Module Status
 
@@ -141,15 +157,20 @@ The database is seeded on first launch with an admin user, default roles (Super 
 - [x] React + TypeScript + Vite setup
 - [x] SQLite embedded database with migrations
 - [x] Authentication (login/logout, session tracking)
-- [x] Role-based access control
+- [x] Auto-login bypass for development
+- [x] Role-based access control (6 roles, 11 permissions)
 - [x] Template library (CRUD, search, filter, duplicate, archive)
 - [x] Template designer canvas (Konva.js)
-- [x] Label objects: Text, Barcode, QR Code, Shape, Line, Image, Date/Time, Counter
+- [x] Label objects: Text, Barcode, QR Code, Shape, Line, Image, Date/Time, Counter, RFID
+- [x] Barcode & QR rendering with bwip-js (no more placeholders)
 - [x] Properties panel for all object types
-- [x] Layers panel with visibility/lock toggles
+- [x] Layers panel with visibility/lock toggles and move up/down reorder
 - [x] Template versioning (save, submit, approve, reject)
+- [x] Version comparison/diff with color-coded changes
 - [x] Print screen with printer/template selection
-- [x] Print job history with cancel/retry
+- [x] Print-time input modal for dynamic fields
+- [x] Print preview with PDF/PNG/ZPL export navigation
+- [x] Print job history with cancel/retry and 10s auto-refresh
 - [x] Printer registration and management
 - [x] User management (CRUD, enable/disable)
 - [x] Global variables management
@@ -158,53 +179,115 @@ The database is seeded on first launch with an admin user, default roles (Super 
 
 ### Phase 2 - Data Sources (In Progress)
 
-- [ ] CSV file import and mapping
+- [x] Data source panel UI (12 types: Static, CSV, Excel, SQLite, PostgreSQL, MySQL, SQL Server, JSON, Print-time Input, Counter, Global Variable, Formula)
+- [x] CSV file import and parsing
+- [x] JSON file import and parsing
+- [x] SQLite database connector
+- [x] Formula engine (string concat, arithmetic, dates, if/else, string functions)
+- [x] Print-time input fields
 - [ ] Excel file import and mapping
-- [ ] SQLite database connector
 - [ ] PostgreSQL database connector
 - [ ] MySQL database connector
-- [ ] Field mapping UI
-- [ ] Print-time input fields
-- [ ] Data preview
-
-### Phase 3 - Advanced Designer
-
-- [ ] Barcode rendering with bwip-js
-- [ ] QR code rendering
-- [ ] Undo/Redo system
-- [ ] Multi-select and group/ungroup
-- [ ] Align and distribute tools
-- [ ] Guides and snap-to-object
-- [ ] Copy/Paste keyboard shortcuts
-- [ ] Ruler and measurement display
-
-### Phase 4 - Printing
-
-- [ ] Label preview rendering
-- [ ] PDF export
-- [ ] PNG export
-- [ ] ZPL output generation
-- [ ] EPL output generation
-- [ ] TSPL output generation
+- [ ] SQL Server database connector
+- [ ] Field mapping UI (bind data fields to designer objects)
+- [ ] Data source preview (load and browse records from connectors)
 - [ ] Batch printing from data source
-- [ ] Local print agent (background service)
 
-### Phase 5 - Advanced Features
+### Phase 3 - Advanced Designer (In Progress)
 
-- [ ] Template .lfx file export/import
-- [ ] Formula engine
-- [ ] RFID encoding adapter
-- [ ] Template approval workflow UI
-- [ ] Auto-save and recovery
-- [ ] Template comparison/diff
+- [x] Barcode rendering with bwip-js (Code128, EAN-13, Code39, etc.)
+- [x] QR code rendering
+- [x] Undo/Redo system with full history
+- [x] Multi-select (Shift+Click) and Select All (Ctrl+A)
+- [x] Copy/Paste/Cut keyboard shortcuts (Ctrl+C/V/X)
+- [x] Duplicate object (Ctrl+D)
+- [x] Align and distribute tools
+- [x] Ruler display (horizontal + vertical, Konva-based)
+- [x] Grid and snap-to-grid
+- [ ] Group/Ungroup selected objects
+- [ ] Snap-to-object guides
+- [ ] Image upload via file picker (IPC to native dialog)
+- [ ] Object rotation handle in canvas
 
-### Phase 6 - Polish
+### Phase 4 - Printing (In Progress)
 
+- [x] Label preview rendering
+- [x] PDF export
+- [x] PNG export
+- [x] ZPL output generation (stub)
+- [x] EPL output generation (stub)
+- [x] TSPL output generation (stub)
+- [ ] Full ZPL/EPL/TSPL implementation
+- [ ] Batch printing from data source
+- [ ] Local print agent (.NET Worker Service)
+
+### Phase 5 - Advanced Features (In Progress)
+
+- [x] Template .lfx.json file export/import
+- [x] Formula engine
+- [x] RFID object type stub in designer
+- [x] Template approval workflow UI (Draft → Submitted → Approved/Rejected)
+- [x] Auto-save every 30 seconds in designer
+- [x] Template comparison/diff view in version history
+- [x] Print-time input modal with validation
+- [ ] RFID encoding adapter (full implementation)
+- [ ] Template status badges in Dashboard
+
+### Phase 6 - Polish (Not Started)
+
+- [x] Code-splitting (lazy-loaded routes, main chunk: 234KB)
 - [ ] App icon and splash screen
 - [ ] Auto-update mechanism
 - [ ] Code-signed builds
-- [ ] macOS and Windows installers
+- [ ] macOS and Windows installers (electron-builder)
 - [ ] Performance optimization for 10K+ record batches
+
+## Designer Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Shift+Z | Redo |
+| Ctrl+S | Save |
+| Delete | Delete selected object |
+| Ctrl+A | Select all objects |
+| Ctrl+C | Copy selected object |
+| Ctrl+V | Paste copied object |
+| Ctrl+X | Cut selected object |
+| Ctrl+D | Duplicate selected object |
+| Ctrl+= | Zoom in |
+| Ctrl+- | Zoom out |
+
+## Designer Object Types
+
+| Type | Description | Rendered |
+|------|-------------|----------|
+| Text | Rich text with font, size, color, alignment | Yes (Konva Text) |
+| Barcode | Code128, EAN-13, Code39, UPC-A, etc. | Yes (bwip-js) |
+| QR Code | QR codes with error correction levels | Yes (bwip-js) |
+| Shape | Rectangle, circle, ellipse, triangle, diamond | Yes (Konva Rect) |
+| Line | Lines with arrow endpoints | Yes (Konva Line) |
+| Image | Embedded or linked images | Placeholder |
+| Date/Time | Date/time with format strings and offset | Yes (format display) |
+| Counter | Incrementing counter with padding, prefix/suffix | Yes (monospace display) |
+| RFID | RFID encoding placeholder | Yes (stub label) |
+
+## Data Source Types
+
+| Type | Status |
+|------|--------|
+| Static Value | Configured |
+| CSV File | Parsing implemented |
+| Excel File | UI configured, parsing pending |
+| SQLite Database | Parsing implemented |
+| PostgreSQL | UI configured, connector pending |
+| MySQL | UI configured, connector pending |
+| SQL Server | UI configured, connector pending |
+| JSON File | Parsing implemented |
+| Print-time Input | UI + modal implemented |
+| Counter | Auto-increment per print job |
+| Global Variable | References system variables |
+| Formula | Engine implemented (math, string, date, conditional) |
 
 ## Database
 
@@ -217,13 +300,23 @@ The application uses **SQLite** embedded directly in the app. No external databa
 
 ## Security
 
-- `contextIsolation: true` - Renderer is isolated from Node.js
-- `nodeIntegration: false` - No direct Node access in renderer
-- `sandbox: false` - Required for better-sqlite3 native module
+- `contextIsolation: true` — Renderer is isolated from Node.js
+- `nodeIntegration: false` — No direct Node access in renderer
+- `sandbox: false` — Required for better-sqlite3 native module
 - Passwords are hashed with bcryptjs
 - All database operations go through IPC (no direct DB access from renderer)
 - Audit logging for all sensitive operations
 
+## Build Output
+
+After `npm run build`, the project produces:
+
+- `dist/` — Renderer bundle (code-split, lazy-loaded pages)
+- `dist-electron/main.js` — Electron main process (~65KB)
+- `dist-electron/preload.js` — Preload context bridge (~3KB)
+- Main chunk: ~235KB (down from 1610KB pre code-splitting)
+- Designer chunk: ~986KB (Konva.js + bwip-js)
+
 ## License
 
-Proprietary - All rights reserved.
+Proprietary — All rights reserved.

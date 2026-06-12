@@ -1,18 +1,21 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { useAuthStore } from './store/authStore'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import TemplateLibrary from './pages/TemplateLibrary'
-import TemplateDesigner from './pages/TemplateDesigner'
-import PrintScreen from './pages/PrintScreen'
-import PrintHistory from './pages/PrintHistory'
-import PrinterStatus from './pages/PrinterStatus'
-import UserManagement from './pages/UserManagement'
-import Settings from './pages/Settings'
-import AuditLogs from './pages/AuditLogs'
-import GlobalVariables from './pages/GlobalVariables'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const TemplateLibrary = lazy(() => import('./pages/TemplateLibrary'))
+const TemplateDesigner = lazy(() => import('./pages/TemplateDesigner'))
+const PrintScreen = lazy(() => import('./pages/PrintScreen'))
+const PrintHistory = lazy(() => import('./pages/PrintHistory'))
+const PrinterStatus = lazy(() => import('./pages/PrinterStatus'))
+const UserManagement = lazy(() => import('./pages/UserManagement'))
+const Settings = lazy(() => import('./pages/Settings'))
+const AuditLogs = lazy(() => import('./pages/AuditLogs'))
+const GlobalVariables = lazy(() => import('./pages/GlobalVariables'))
+const PrintPreview = lazy(() => import('./pages/PrintPreview'))
+const TemplateVersions = lazy(() => import('./pages/TemplateVersions'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -31,30 +34,34 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="templates" element={<TemplateLibrary />} />
-          <Route path="templates/new" element={<TemplateDesigner />} />
-          <Route path="templates/:id/edit" element={<TemplateDesigner />} />
-          <Route path="print" element={<PrintScreen />} />
-          <Route path="print-history" element={<PrintHistory />} />
-          <Route path="printers" element={<PrinterStatus />} />
-          <Route path="users" element={<UserManagement />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="global-variables" element={<GlobalVariables />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-[var(--text-secondary)]">Loading...</div></div>}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="templates" element={<TemplateLibrary />} />
+            <Route path="templates/new" element={<TemplateDesigner />} />
+            <Route path="templates/:id/edit" element={<TemplateDesigner />} />
+            <Route path="templates/:id/versions" element={<TemplateVersions />} />
+            <Route path="print" element={<PrintScreen />} />
+            <Route path="print-history" element={<PrintHistory />} />
+            <Route path="printers" element={<PrinterStatus />} />
+            <Route path="users" element={<UserManagement />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="audit-logs" element={<AuditLogs />} />
+            <Route path="global-variables" element={<GlobalVariables />} />
+            <Route path="templates/:id/preview" element={<PrintPreview />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }
