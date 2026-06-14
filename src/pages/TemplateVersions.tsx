@@ -170,7 +170,7 @@ export default function TemplateVersions() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
-          onClick={() => navigate('/templates')}
+          onClick={() => navigate('/app/templates')}
           className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm hover:bg-slate-50"
         >
           &larr; Back
@@ -380,7 +380,7 @@ export default function TemplateVersions() {
                     {version.status === 'Draft' && (
                       <>
                         <button
-                          onClick={() => navigate(`/templates/${id}/edit?version=${version.id}`)}
+                          onClick={() => navigate(`/app/templates/${id}/edit?version=${version.id}`)}
                           className="rounded px-2 py-1 text-[11px] hover:bg-blue-50 hover:text-blue-600"
                         >
                           Edit

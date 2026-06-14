@@ -34,6 +34,7 @@ export default function PrintScreen() {
   const [selectedPrinter, setSelectedPrinter] = useState('')
   const [copies, setCopies] = useState(1)
   const [isPrinting, setIsPrinting] = useState(false)
+  const [isDiscovering, setIsDiscovering] = useState(false)
   const [showPrintInputDialog, setShowPrintInputDialog] = useState(false)
   const [printTimeValues, setPrintTimeValues] = useState<Record<string, string>>({})
   const [printTimeFields] = useState<Array<{id: string; label: string; type: string; required: boolean; options?: string[]}>>([])
@@ -51,20 +52,36 @@ export default function PrintScreen() {
     } catch {}
   }
 
+  const handleDetectPrinters = async () => {
+    setIsDiscovering(true)
+    try {
+      const detected = await window.electronAPI?.printers.discover() || []
+      for (const printer of detected) {
+        await window.electronAPI?.printers.registerDiscovered(printer)
+      }
+      await loadData()
+    } finally {
+      setIsDiscovering(false)
+    }
+  }
+
   const handlePrint = async () => {
     if (!selectedTemplate || !selectedPrinter) return
     setIsPrinting(true)
     try {
       const template = templates.find((t: any) => t.id === selectedTemplate)
-      await window.electronAPI?.printJobs.create({
+      const result = await window.electronAPI?.printJobs.create({
         template_id: selectedTemplate,
         template_version_id: template?.current_version_id,
         printer_id: selectedPrinter,
         requested_by: 'current_user',
         copies,
       })
+      if (result?.success === false) {
+        throw new Error(result.error || 'Printer rejected the job')
+      }
       alert('Print job submitted successfully!')
-      navigate('/print-history')
+      navigate('/app/print-history')
     } catch (error: any) {
       alert(`Print failed: ${error.message}`)
     } finally {
@@ -108,7 +125,16 @@ export default function PrintScreen() {
         </div>
 
         <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Select Printer</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Select Printer</h2>
+            <button
+              onClick={handleDetectPrinters}
+              disabled={isDiscovering}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isDiscovering ? 'Detecting...' : 'Detect Printers'}
+            </button>
+          </div>
           {printers.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
               No printers available. Please register a printer first.
@@ -122,7 +148,7 @@ export default function PrintScreen() {
               <option value="">Select a printer...</option>
               {printers.map((p: any) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.printer_type || 'Unknown'} - {p.status})
+                  {p.name} ({p.printer_type || 'Unknown'} - {p.connection_type || 'driver'} - {p.status})
                 </option>
               ))}
             </select>
@@ -154,14 +180,14 @@ export default function PrintScreen() {
 
         <div className="flex justify-end gap-3">
           <button
-            onClick={() => selectedTemplate && navigate(`/templates/${selectedTemplate}/preview`)}
+            onClick={() => selectedTemplate && navigate(`/app/templates/${selectedTemplate}/preview`)}
             disabled={!selectedTemplate}
             className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
           >
             Preview
           </button>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/app/dashboard')}
             className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-medium hover:bg-slate-50"
           >
             Cancel

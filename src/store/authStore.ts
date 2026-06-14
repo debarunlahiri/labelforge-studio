@@ -21,8 +21,6 @@ function getApi() {
   return window.electronAPI
 }
 
-const AUTO_LOGIN_ENABLED = true
-
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
@@ -54,14 +52,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
-    if (AUTO_LOGIN_ENABLED) {
-      try {
-        const result = await getApi().auth.login('admin', 'admin')
-        if (result.success) {
-          set({ user: result.user, isAuthenticated: true })
-          return
-        }
-      } catch {}
+    try {
+      const result = await getApi().auth.login('admin', 'admin')
+      if (result.success) {
+        set({ user: result.user, isAuthenticated: true })
+        return
+      }
+      console.log('[Auth] Auto-login failed:', result.error)
+    } catch (e: any) {
+      console.error('[Auth] Auto-login error:', e.message || e)
     }
     try {
       const user = await getApi().auth.getCurrentUser()
@@ -70,7 +69,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       } else {
         set({ user: null, isAuthenticated: false })
       }
-    } catch {
+    } catch (e: any) {
+      console.error('[Auth] Get current user error:', e.message || e)
       set({ user: null, isAuthenticated: false })
     }
   },

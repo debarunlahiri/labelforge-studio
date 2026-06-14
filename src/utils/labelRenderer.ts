@@ -67,10 +67,16 @@ export function renderToCanvas(
         ctx.textBaseline = t.verticalAlign === 'middle' ? 'middle' : t.verticalAlign === 'bottom' ? 'bottom' : 'top'
         const textX = t.horizontalAlign === 'center' ? obj.width / 2 : t.horizontalAlign === 'right' ? obj.width : 0
         const textY = t.verticalAlign === 'middle' ? obj.height / 2 : t.verticalAlign === 'bottom' ? obj.height : 0
-        if (t.underline) {
-          ctx.textDecoration = 'underline'
-        }
         ctx.fillText(t.value, textX, textY)
+        if (t.underline) {
+          const width = ctx.measureText(t.value).width
+          const underlineY = textY + t.fontSize * 0.12
+          ctx.beginPath()
+          ctx.moveTo(textX, underlineY)
+          ctx.lineTo(textX + width, underlineY)
+          ctx.strokeStyle = t.textColor
+          ctx.stroke()
+        }
         break
       }
       case 'barcode': {
@@ -216,7 +222,7 @@ export async function renderToPDF(
 
   const pdfContent = buildSimplePDF(imgData, widthInPt, heightInPt, canvas.width, canvas.height)
 
-  return Promise.resolve(new Blob([pdfContent], { type: 'application/pdf' }))
+  return Promise.resolve(new Blob([pdfContent.slice()], { type: 'application/pdf' }))
 }
 
 function buildSimplePDF(
@@ -440,7 +446,7 @@ function mapQRErrorLevelToZPL(level: string): string {
 
 function toZPLColor(color: string): string {
   if (color === '#000000' || color === 'black' || color === '#000' || color === '#fff' || color === '#FFFFFF') {
-    if (color === '#FFFFFF' || color === '#fff' || color === 'white') return 'W'
+    if (color === '#FFFFFF' || color === '#fff') return 'W'
     return 'B'
   }
   return 'B'

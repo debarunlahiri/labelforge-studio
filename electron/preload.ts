@@ -46,9 +46,11 @@ const api = {
       ipcRenderer.invoke('templateVersions:reject', id, reason),
   },
   printers: {
+    supportedModels: () => ipcRenderer.invoke('printers:supportedModels'),
     list: () => ipcRenderer.invoke('printers:list'),
     getById: (id: string) => ipcRenderer.invoke('printers:getById', id),
     register: (data: any) => ipcRenderer.invoke('printers:register', data),
+    registerDiscovered: (data: any) => ipcRenderer.invoke('printers:registerDiscovered', data),
     update: (id: string, data: any) => ipcRenderer.invoke('printers:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('printers:delete', id),
     discover: () => ipcRenderer.invoke('printers:discover'),
@@ -66,6 +68,11 @@ const api = {
     create: (data: any) => ipcRenderer.invoke('globalVariables:create', data),
     update: (id: string, data: any) => ipcRenderer.invoke('globalVariables:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('globalVariables:delete', id),
+  },
+  settings: {
+    getAll: () => ipcRenderer.invoke('settings:getAll'),
+    set: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
+    setMany: (settings: Record<string, string>) => ipcRenderer.invoke('settings:setMany', settings),
   },
   auditLogs: {
     list: (filters?: any) => ipcRenderer.invoke('auditLogs:list', filters),
@@ -87,6 +94,7 @@ const api = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPath: (name: string) => ipcRenderer.invoke('app:getPath', name),
     selectFile: (options: any) => ipcRenderer.invoke('app:selectFile', options),
+    readFile: (filePath: string) => ipcRenderer.invoke('app:readFile', filePath),
   },
 }
 

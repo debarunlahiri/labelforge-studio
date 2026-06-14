@@ -97,7 +97,7 @@ export default function TemplateLibrary() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Template Library</h1>
         <button
-          onClick={() => navigate('/templates/new')}
+          onClick={() => navigate('/app/templates/new')}
           className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
         >
           + New Template
@@ -137,7 +137,7 @@ export default function TemplateLibrary() {
             Create your first label template to get started
           </p>
           <button
-            onClick={() => navigate('/templates/new')}
+            onClick={() => navigate('/app/templates/new')}
             className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
           >
             + Create Template
@@ -149,7 +149,7 @@ export default function TemplateLibrary() {
             <div
               key={template.id}
               className="group cursor-pointer rounded-xl border border-[var(--border-color)] bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-              onClick={() => navigate(`/templates/${template.id}/edit`)}
+              onClick={() => navigate(`/app/templates/${template.id}/edit`)}
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
@@ -181,14 +181,14 @@ export default function TemplateLibrary() {
                 <span>Created: {new Date(template.created_at).toLocaleDateString()}</span>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/preview`) }}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/app/templates/${template.id}/preview`) }}
                     className="rounded px-2 py-1 text-[10px] hover:bg-green-50 hover:text-green-600"
                     title="Preview"
                   >
                     Preview
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/versions`) }}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/app/templates/${template.id}/versions`) }}
                     className="rounded px-2 py-1 text-[10px] hover:bg-indigo-50 hover:text-indigo-600"
                     title="Version History"
                   >

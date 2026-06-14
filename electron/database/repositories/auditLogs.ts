@@ -1,4 +1,4 @@
-import { getDatabase } from '../db'
+import { query, run } from '../dbHelpers'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface AuditLog {
@@ -25,7 +25,6 @@ export function listAuditLogs(filters?: {
   start_date?: string
   end_date?: string
 }): AuditLog[] {
-  const db = getDatabase()
   let sql = 'SELECT * FROM audit_logs WHERE 1=1'
   const params: any[] = []
 
@@ -52,7 +51,7 @@ export function listAuditLogs(filters?: {
 
   sql += ' ORDER BY timestamp DESC LIMIT 1000'
 
-  return db.prepare(sql).all(...params) as AuditLog[]
+  return query(sql, params) as AuditLog[]
 }
 
 export function createAuditLog(data: {
@@ -67,21 +66,20 @@ export function createAuditLog(data: {
   status?: string
   error_message?: string
 }): void {
-  const db = getDatabase()
-  db.prepare(
-    `INSERT INTO audit_logs (id, user_id, username, action, module, entity_type, entity_id, old_value, new_value, status, error_message)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    uuidv4(),
-    data.user_id || null,
-    data.username || null,
-    data.action,
-    data.module || null,
-    data.entity_type || null,
-    data.entity_id || null,
-    data.old_value || null,
-    data.new_value || null,
-    data.status || null,
-    data.error_message || null
+  run(
+    'INSERT INTO audit_logs (id, user_id, username, action, module, entity_type, entity_id, old_value, new_value, status, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      uuidv4(),
+      data.user_id || null,
+      data.username || null,
+      data.action,
+      data.module || null,
+      data.entity_type || null,
+      data.entity_id || null,
+      data.old_value || null,
+      data.new_value || null,
+      data.status || null,
+      data.error_message || null,
+    ]
   )
 }

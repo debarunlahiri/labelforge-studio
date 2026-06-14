@@ -4,6 +4,38 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url))
+
+function injectDirnamePolyfill() {
+  const mainJs = path.join(projectRoot, 'dist-electron', 'main.js')
+  if (!existsSync(mainJs)) return
+  let code = readFileSync(mainJs, 'utf-8')
+  if (code.includes('__dirname_polyfill__')) return
+  const polyfill = `var __dirname_polyfill__ = 1;
+var __dirname, __filename;
+if (typeof __dirname === 'undefined') {
+  try {
+    var _url = new URL('.', import.meta.url);
+    __dirname = decodeURIComponent(_url.pathname);
+    if (__dirname.endsWith('/')) __dirname = __dirname.slice(0, -1);
+    __filename = decodeURIComponent(new URL(import.meta.url).pathname);
+    globalThis.__dirname = __dirname;
+    globalThis.__filename = __filename;
+  } catch(e) {
+    __dirname = process.cwd();
+    __filename = '';
+    globalThis.__dirname = __dirname;
+    globalThis.__filename = __filename;
+  }
+}
+`
+  code = polyfill + code
+  writeFileSync(mainJs, code)
+  console.log('[inject-dirname] Polyfill injected into dist-electron/main.js')
+}
 
 export default defineConfig({
   plugins: [
@@ -12,26 +44,54 @@ export default defineConfig({
     electron([
       {
         entry: 'electron/main.ts',
+        onstart(options) {
+          injectDirnamePolyfill()
+          if (options && options.startup) {
+            options.startup()
+          }
+        },
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3'],
+              external: ['sql.js'],
             },
           },
         },
       },
       {
-        entry: 'electron/preload.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              input: 'electron/preload.ts',
+              output: {
+                format: 'cjs',
+                codeSplitting: false,
+                entryFileNames: 'preload.js',
+                chunkFileNames: '[name].js',
+              },
+            },
+          },
+        },
         onstart(args) {
           args.reload()
         },
       },
     ]),
     renderer(),
+    {
+      name: 'copy-sql-wasm',
+      closeBundle() {
+        const src = path.join(projectRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+        const destDir = path.join(projectRoot, 'dist-electron')
+        if (existsSync(src) && existsSync(destDir)) {
+          copyFileSync(src, path.join(destDir, 'sql-wasm.wasm'))
+        }
+      },
+    },
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(projectRoot, 'src'),
     },
   },
 })

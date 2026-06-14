@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, lazy, Suspense } from 'react'
 import { useAuthStore } from './store/authStore'
 import Layout from './components/Layout'
-import Login from './pages/Login'
+import Welcome from './pages/Welcome'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const TemplateLibrary = lazy(() => import('./pages/TemplateLibrary'))
@@ -17,14 +17,6 @@ const GlobalVariables = lazy(() => import('./pages/GlobalVariables'))
 const PrintPreview = lazy(() => import('./pages/PrintPreview'))
 const TemplateVersions = lazy(() => import('./pages/TemplateVersions'))
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-  return <>{children}</>
-}
-
 function App() {
   const { checkAuth } = useAuthStore()
 
@@ -36,16 +28,12 @@ function App() {
     <BrowserRouter>
       <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-[var(--text-secondary)]">Loading...</div></div>}>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Welcome />} />
           <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
+            path="/app"
+            element={<Layout />}
           >
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="templates" element={<TemplateLibrary />} />
             <Route path="templates/new" element={<TemplateDesigner />} />

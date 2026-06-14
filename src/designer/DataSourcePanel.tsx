@@ -459,6 +459,7 @@ const TYPE_ICONS: Record<DataSourceType, string> = {
   mysql: 'MY',
   sqlserver: 'MS',
   json: '{ }',
+  xml: '<>',
   printTimeInput: '✏',
   counter: '#',
   globalVariable: 'V',
@@ -537,12 +538,12 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
   }
 
   return (
-    <div className="w-64 border-l border-[var(--border-color)] bg-white flex flex-col overflow-y-auto">
-      <div className="flex h-8 items-center justify-between border-b border-[var(--border-color)] px-3">
+    <div className="flex w-72 flex-col overflow-y-auto border-l border-[var(--border-color)] bg-white">
+      <div className="flex h-12 items-center justify-between border-b border-[var(--border-color)] px-5">
         <span className="text-xs font-semibold text-[var(--text-secondary)]">Data Sources</span>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex h-5 w-5 items-center justify-center rounded text-sm text-[var(--color-primary)] hover:bg-blue-50 transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-sm text-[var(--color-primary)] transition-colors hover:bg-blue-50"
           title="Add data source"
         >
           +
@@ -551,15 +552,15 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
 
       <div className="flex-1 overflow-y-auto">
         {showAddForm && (
-          <div className="border-b border-[var(--border-color)] p-3 bg-blue-50">
-            <div className="space-y-2">
+          <div className="border-b border-[var(--border-color)] bg-blue-50 p-5">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <label className="w-12 text-[11px] text-[var(--text-secondary)]">Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-[11px]"
+                  className="flex-1 rounded border border-slate-300 px-2.5 py-1.5 text-[11px]"
                   placeholder="Data source name"
                 />
               </div>
@@ -568,7 +569,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
                 <select
                   value={newType}
                   onChange={(e) => setNewType(e.target.value as DataSourceType)}
-                  className="flex-1 rounded border border-slate-300 px-1 py-1 text-[11px]"
+                  className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-[11px]"
                 >
                   {DATA_SOURCE_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -578,13 +579,13 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleAdd}
-                  className="flex-1 rounded bg-[var(--color-primary)] px-2 py-1 text-[11px] font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
+                  className="flex-1 rounded bg-[var(--color-primary)] px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[var(--color-primary-hover)]"
                 >
                   Add
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}
-                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-[11px] font-medium hover:bg-slate-50 transition-colors"
+                  className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -594,7 +595,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
         )}
 
         {dataSources.length === 0 && !showAddForm && (
-          <div className="p-3 text-center text-[11px] text-[var(--text-secondary)]">
+          <div className="p-5 text-center text-[11px] text-[var(--text-secondary)]">
             No data sources. Click + to add one.
           </div>
         )}
@@ -607,7 +608,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
           return (
             <div key={ds.id} className="border-b border-[var(--border-color)]">
               <div
-                className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors"
+                className="flex cursor-pointer items-center gap-2 px-5 py-3 transition-colors hover:bg-slate-50"
                 onClick={() => setExpandedId(isExpanded ? null : ds.id)}
               >
                 <span className="flex h-5 w-5 items-center justify-center rounded bg-slate-100 text-[10px] font-mono font-bold">
@@ -621,16 +622,16 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
               </div>
 
               {isExpanded && (
-                <div className="bg-slate-50 px-3 pb-3 pt-1">
+                <div className="bg-slate-50 px-5 pb-5 pt-2">
                   {isEditing ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <label className="w-16 text-[11px] text-[var(--text-secondary)]">Name</label>
                         <input
                           type="text"
                           value={ds.name}
                           onChange={(e) => handleNameChange(ds.id, e.target.value)}
-                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-[11px]"
+                          className="flex-1 rounded border border-slate-300 px-2.5 py-1.5 text-[11px]"
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -647,7 +648,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={() => setEditingId(null)}
-                          className="flex-1 rounded bg-[var(--color-primary)] px-2 py-1 text-[11px] font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
+                          className="flex-1 rounded bg-[var(--color-primary)] px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[var(--color-primary-hover)]"
                         >
                           Done
                         </button>

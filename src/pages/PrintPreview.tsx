@@ -27,17 +27,29 @@ export default function PrintPreview() {
 
   const [copies, setCopies] = useState(1)
   const [isExporting, setIsExporting] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
+  const [printers, setPrinters] = useState<any[]>([])
+  const [selectedPrinter, setSelectedPrinter] = useState('')
   const [printerLanguage, setPrinterLanguage] = useState<'pdf' | 'zpl' | 'epl' | 'tspl'>('pdf')
 
   useEffect(() => {
     if (id) {
       loadTemplate(id)
       loadVersions(id)
+      loadPrinters()
     }
     return () => {
       clearObjects()
     }
   }, [id])
+
+  const loadPrinters = async () => {
+    try {
+      const data = await window.electronAPI?.printers.list() || []
+      setPrinters(data)
+      if (data.length > 0) setSelectedPrinter((current) => current || data[0].id)
+    } catch {}
+  }
 
   useEffect(() => {
     if (currentTemplate && id) {
@@ -129,17 +141,41 @@ export default function PrintPreview() {
     URL.revokeObjectURL(url)
   }
 
+  const handlePrint = async () => {
+    if (!currentTemplate || !selectedPrinter) return
+    setIsPrinting(true)
+    try {
+      const result = await window.electronAPI?.printJobs.create({
+        template_id: currentTemplate.id,
+        template_version_id: currentTemplate.current_version_id,
+        printer_id: selectedPrinter,
+        requested_by: 'current_user',
+        copies,
+        printer_language: printerLanguage === 'pdf' ? undefined : printerLanguage,
+      })
+      if (result?.success === false) throw new Error(result.error || 'Print failed')
+      alert('Print job sent successfully.')
+    } catch (error: any) {
+      alert(`Print failed: ${error.message}`)
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
   const renderObject = (obj: LabelObject) => {
     switch (obj.type) {
       case 'text': {
         const textObj = obj as TextObject
+        const hasBackground = Boolean(textObj.backgroundColor && textObj.backgroundColor !== 'transparent')
         return (
           <Group key={obj.id} x={obj.x} y={obj.y} rotation={obj.rotation}>
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill={textObj.backgroundColor === 'transparent' ? '#FFFFFF' : textObj.backgroundColor}
-            />
+            {hasBackground && (
+              <Rect
+                width={obj.width}
+                height={obj.height}
+                fill={textObj.backgroundColor}
+              />
+            )}
             <Text
               text={textObj.value}
               fontSize={textObj.fontSize}
@@ -279,6 +315,20 @@ export default function PrintPreview() {
           </div>
 
           <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-[var(--text-secondary)]">Printer:</label>
+            <select
+              value={selectedPrinter}
+              onChange={(e) => setSelectedPrinter(e.target.value)}
+              className="max-w-56 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Select printer...</option>
+              {printers.map((printer: any) => (
+                <option key={printer.id} value={printer.id}>{printer.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-[var(--text-secondary)]">Language:</label>
             <select
               value={printerLanguage}
@@ -315,6 +365,13 @@ export default function PrintPreview() {
           <span>{copies} cop{copies === 1 ? 'y' : 'ies'}</span>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={handlePrint}
+            disabled={isPrinting || !selectedPrinter}
+            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
+          >
+            {isPrinting ? 'Printing...' : 'Print'}
+          </button>
           <button
             onClick={handleExportPDF}
             disabled={isExporting}

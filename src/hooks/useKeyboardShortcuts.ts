@@ -18,17 +18,22 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
+      const key = e.key.toLowerCase()
       const isInputFocused =
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
 
-      if (mod && e.key === 'z' && !e.shiftKey) {
+      if (isInputFocused && !(mod && key === 's')) return
+
+      if (mod && key === 'z' && !e.shiftKey) {
         e.preventDefault()
         handlers.onUndo()
         return
       }
 
-      if (mod && e.key === 'z' && e.shiftKey) {
+      if ((mod && key === 'z' && e.shiftKey) || (mod && key === 'y')) {
         e.preventDefault()
         handlers.onRedo()
         return
@@ -40,37 +45,49 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         return
       }
 
-      if (mod && e.key === 's') {
+      if (mod && key === 's') {
         e.preventDefault()
         handlers.onSave()
         return
       }
 
-      if (mod && e.key === 'a') {
+      if (mod && key === 'a') {
         e.preventDefault()
         handlers.onSelectAll()
         return
       }
 
-      if (mod && e.key === 'x') {
+      if (mod && key === 'x') {
         e.preventDefault()
         handlers.onCut?.()
         return
       }
 
-      if (mod && e.key === 'd') {
+      if (mod && key === 'c') {
+        e.preventDefault()
+        handlers.onCopy()
+        return
+      }
+
+      if (mod && key === 'v') {
+        e.preventDefault()
+        handlers.onPaste()
+        return
+      }
+
+      if (mod && key === 'd') {
         e.preventDefault()
         handlers.onDuplicate?.()
         return
       }
 
-      if (mod && (e.key === '=' || e.key === '+')) {
+      if (mod && (key === '=' || key === '+')) {
         e.preventDefault()
         handlers.onZoomIn()
         return
       }
 
-      if (mod && e.key === '-') {
+      if (mod && key === '-') {
         e.preventDefault()
         handlers.onZoomOut()
         return

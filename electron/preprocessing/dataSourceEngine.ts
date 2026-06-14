@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
-import Database from 'better-sqlite3'
+import { app } from 'electron'
+import initSqlJs from 'sql.js'
+import type { Database as SqlJsDatabase } from 'sql.js'
 
 export type DataSourceType =
   | 'static'
@@ -122,7 +124,7 @@ export function parseJson(content: string): Record<string, any>[] {
   return [parsed]
 }
 
-export function fetchRecords(dataSource: DataSource, limit?: number, offset?: number): Record<string, any>[] {
+export async function fetchRecords(dataSource: DataSource, limit?: number, offset?: number): Promise<Record<string, any>[]> {
   const config: DataSourceConfig = JSON.parse(dataSource.config_json)
   const dsType = dataSource.type as DataSourceType
 
@@ -136,7 +138,7 @@ export function fetchRecords(dataSource: DataSource, limit?: number, offset?: nu
       records = fetchJson(config)
       break
     case 'sqlite':
-      records = fetchSqlite(config)
+      records = await fetchSqlite(config)
       break
     case 'static':
       records = fetchStatic(config)
@@ -171,14 +173,14 @@ export function fetchRecords(dataSource: DataSource, limit?: number, offset?: nu
   return records
 }
 
-export function getFields(dataSource: DataSource): string[] {
+export async function getFields(dataSource: DataSource): Promise<string[]> {
   const config: DataSourceConfig = JSON.parse(dataSource.config_json)
   const dsType = dataSource.type as DataSourceType
 
   switch (dsType) {
     case 'csv': {
       if (!config.filePath) return []
-      const content = fs.readFileSync(config.filePath, config.encoding || 'utf-8')
+      const content = fs.readFileSync(config.filePath, (config.encoding || 'utf-8') as BufferEncoding)
       const records = parseCsv(content, config.delimiter || ',', config.hasHeaders !== false)
       if (records.length === 0) return []
       return Object.keys(records[0])
@@ -191,7 +193,7 @@ export function getFields(dataSource: DataSource): string[] {
       return Object.keys(records[0])
     }
     case 'sqlite': {
-      const records = fetchSqlite(config)
+      const records = await fetchSqlite(config)
       if (records.length === 0) return []
       return Object.keys(records[0])
     }
@@ -212,7 +214,7 @@ export function getFields(dataSource: DataSource): string[] {
 
 function fetchCsv(config: DataSourceConfig): Record<string, any>[] {
   if (!config.filePath) return []
-  const content = fs.readFileSync(config.filePath, config.encoding || 'utf-8')
+  const content = fs.readFileSync(config.filePath, (config.encoding || 'utf-8') as BufferEncoding)
   return parseCsv(content, config.delimiter || ',', config.hasHeaders !== false)
 }
 
@@ -222,16 +224,50 @@ function fetchJson(config: DataSourceConfig): Record<string, any>[] {
   return parseJson(content)
 }
 
-function fetchSqlite(config: DataSourceConfig): Record<string, any>[] {
+async function loadWasmForSqlite(): Promise<Uint8Array> {
+  const isDev = !!process.env.VITE_DEV_SERVER_URL
+  const candidates = isDev
+    ? [
+        path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+      ]
+    : [
+        path.join(app.getAppPath(), 'sql-wasm.wasm'),
+        path.join(app.getAppPath(), 'dist-electron', 'sql-wasm.wasm'),
+        path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+      ]
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return new Uint8Array(fs.readFileSync(candidate))
+      }
+    } catch {}
+  }
+  throw new Error('sql-wasm.wasm not found for data source engine')
+}
+
+async function fetchSqlite(config: DataSourceConfig): Promise<Record<string, any>[]> {
   const dbPath = config.filePath || config.connectionString
   if (!dbPath) return []
 
-  let db: Database.Database | null = null
+  let db: SqlJsDatabase | null = null
   try {
-    db = new Database(dbPath, { readonly: true })
+    const wasmBinary = await loadWasmForSqlite()
+    const SQL = await initSqlJs({ wasmBinary })
+    const fileBuffer = fs.readFileSync(dbPath)
+    db = new SQL.Database(fileBuffer)
     const query = config.query || (config.tableName ? `SELECT * FROM ${config.tableName}` : '')
     if (!query) return []
-    return db.prepare(query).all() as Record<string, any>[]
+    const results = db.exec(query)
+    if (results.length === 0 || results[0].values.length === 0) return []
+    const columns = results[0].columns
+    return results[0].values.map((row: any[]) => {
+      const record: Record<string, any> = {}
+      columns.forEach((col: string, i: number) => {
+        record[col] = row[i]
+      })
+      return record
+    })
   } catch {
     return []
   } finally {

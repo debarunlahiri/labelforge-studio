@@ -1,6 +1,10 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { fileURLToPath } from 'url'
 import path from 'path'
+import { app, BrowserWindow } from 'electron'
+import { initDatabase, closeDatabase } from './database/db.js'
 import { registerIpcHandlers } from './ipc/index.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
 
@@ -11,12 +15,11 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'LabelForge Studio',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '..', 'public', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
     },
     frame: true,
     show: false,
@@ -30,7 +33,7 @@ function createWindow() {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
 
   mainWindow.on('closed', () => {
@@ -39,6 +42,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  await initDatabase()
   registerIpcHandlers()
 
   createWindow()
@@ -51,7 +55,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  closeDatabase()
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  closeDatabase()
 })

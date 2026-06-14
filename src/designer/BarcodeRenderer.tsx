@@ -1,23 +1,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Group, Rect, Text, Image as KonvaImage } from 'react-konva'
+import type Konva from 'konva'
 import bwipjs from 'bwip-js'
-
-const BARCODE_TYPE_MAP: Record<string, string> = {
-  Code128: 'code128',
-  Code39: 'code39',
-  EAN13: 'ean13',
-  EAN8: 'ean8',
-  UPCA: 'upca',
-  UPCE: 'upce',
-  QRCode: 'qrcode',
-  DataMatrix: 'datamatrix',
-  PDF417: 'pdf417',
-  ITF14: 'itf14',
-  GS1128: 'gs1-128',
-  GS1DataMatrix: 'gs1datamatrix',
-}
+import { getBwipSymbology, getSymbologyLabel, isQrFamilySymbology, symbologyByValue } from './symbologies'
 
 interface BarcodeRendererProps {
+  id?: string
+  x?: number
+  y?: number
+  rotation?: number
+  name?: string
   value: string
   barcodeType: string
   width: number
@@ -34,6 +26,9 @@ interface BarcodeRendererProps {
   }
   selected?: boolean
   onClick?: (e: any) => void
+  onMouseDown?: (e: any) => void
+  onContextMenu?: (e: any) => void
+  onDragMove?: (e: any) => void
   onDragEnd?: (x: number, y: number) => void
 }
 
@@ -51,7 +46,7 @@ function renderBarcodeToDataUrl(
 ): BarcodeResult {
   try {
     const canvas = document.createElement('canvas')
-    const opts: bwipjs.EncodeOptions = {
+    const opts: any = {
       bcid: bwipType,
       text: value,
       scale: 3,
@@ -84,6 +79,11 @@ function renderBarcodeToDataUrl(
 }
 
 export default function BarcodeRenderer({
+  id,
+  x = 0,
+  y = 0,
+  rotation = 0,
+  name,
   value,
   barcodeType,
   width,
@@ -91,12 +91,16 @@ export default function BarcodeRenderer({
   options,
   selected,
   onClick,
+  onMouseDown,
+  onContextMenu,
+  onDragMove,
   onDragEnd,
 }: BarcodeRendererProps) {
-  const bwipType = useMemo(() => BARCODE_TYPE_MAP[barcodeType] || barcodeType.toLowerCase(), [barcodeType])
+  const symbology = symbologyByValue[barcodeType]
+  const bwipType = useMemo(() => getBwipSymbology(barcodeType), [barcodeType])
 
   const isQR = useMemo(() => {
-    return bwipType === 'qrcode' || bwipType === 'datamatrix' || bwipType === 'gs1datamatrix' || bwipType === 'pdf417'
+    return bwipType === 'qrcode' || bwipType === 'datamatrix' || bwipType === 'gs1datamatrix' || bwipType === 'pdf417' || bwipType === 'azteccode' || bwipType === 'maxicode'
   }, [bwipType])
 
   const showHumanReadable = options?.showHumanReadable ?? false
@@ -106,9 +110,16 @@ export default function BarcodeRenderer({
   const barcodeAreaHeight = height - humanReadableHeight
 
   const barcodeResult = useMemo(() => {
+    if (symbology?.supported === false || !bwipType) {
+      return { dataUrl: '', error: `${getSymbologyLabel(barcodeType)} is listed but not renderable in this preview engine yet` }
+    }
     if (!value) return { dataUrl: '', error: 'No value' }
-    return renderBarcodeToDataUrl(bwipType, value, width, barcodeAreaHeight, options)
-  }, [value, bwipType, width, barcodeAreaHeight, options])
+    const result = renderBarcodeToDataUrl(bwipType, value, width, barcodeAreaHeight, options)
+    if (result.error && isQrFamilySymbology(barcodeType) && bwipType !== 'qrcode') {
+      return renderBarcodeToDataUrl('qrcode', value, width, barcodeAreaHeight, options)
+    }
+    return result
+  }, [barcodeType, symbology, value, bwipType, width, barcodeAreaHeight, options])
 
   const hasError = !value || !!barcodeResult.error
 
@@ -138,8 +149,9 @@ export default function BarcodeRenderer({
 
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
+      const node = e.currentTarget
       if (onDragEnd) {
-        onDragEnd(e.target.x(), e.target.y())
+        onDragEnd(node.x(), node.y())
       }
     },
     [onDragEnd]
@@ -147,9 +159,17 @@ export default function BarcodeRenderer({
 
   return (
     <Group
+      id={id}
+      x={x}
+      y={y}
+      rotation={rotation}
+      name={name}
       onClick={onClick}
       onTap={onClick}
+      onMouseDown={onMouseDown}
+      onContextMenu={onContextMenu}
       draggable
+      onDragMove={onDragMove}
       onDragEnd={handleDragEnd}
     >
       <Rect
@@ -191,7 +211,7 @@ export default function BarcodeRenderer({
 
       {!hasError && !currentBarcodeImage && (
         <Text
-          text={`[${barcodeType}]`}
+          text={`[${getSymbologyLabel(barcodeType)}]`}
           fontSize={12}
           fill={foregroundColor}
           width={width}

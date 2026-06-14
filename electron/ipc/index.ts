@@ -1,24 +1,29 @@
 import { ipcMain, app, dialog } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import { initDatabase, closeDatabase, getDatabase } from '../database/db'
+import { query, run } from '../database/dbHelpers'
 import { getUserByUsername, verifyPassword, updateLastLogin, getUserById, listUsers, createUser, updateUser, deleteUser, changePassword } from '../database/repositories/users'
 import { listTemplates, getTemplateById, createTemplate, updateTemplate, deleteTemplate as deleteTemplateRepo, duplicateTemplate, archiveTemplate, exportTemplate, importTemplate } from '../database/repositories/templates'
-import { listTemplateVersions, saveTemplateVersion, submitForApproval, approveVersion, rejectVersion } from '../database/repositories/templateVersions'
-import { listPrinters, getPrinterById, registerPrinter, updatePrinter, deletePrinter as deletePrinterRepo, discoverPrinters } from '../database/repositories/printers'
-import { listPrintJobs, getPrintJobById, createPrintJob, cancelPrintJob, retryPrintJob } from '../database/repositories/printJobs'
+import { listTemplateVersions, getTemplateVersionById, saveTemplateVersion, submitForApproval, approveVersion, rejectVersion } from '../database/repositories/templateVersions'
+import { listPrinters, getPrinterById, registerPrinter, updatePrinter, deletePrinter as deletePrinterRepo, updatePrinterJobStatus, updatePrinterStatus } from '../database/repositories/printers'
+import { listPrintJobs, getPrintJobById, createPrintJob, cancelPrintJob, retryPrintJob, addPrintJobLog } from '../database/repositories/printJobs'
+import { listAuditLogs } from '../database/repositories/auditLogs'
 import { createAuditLog } from '../database/repositories/auditLogs'
 import { listGlobalVariables, createGlobalVariable, updateGlobalVariable, deleteGlobalVariable } from '../database/repositories/globalVariables'
+import { getSystemSettings, setSystemSetting, setSystemSettings } from '../database/repositories/systemSettings'
 import { listDataSources, getDataSourceById, createDataSource, updateDataSource, deleteDataSource } from '../database/repositories/dataSources'
 import { fetchRecords, getFields, parseCsv, parseJson } from '../preprocessing/dataSourceEngine'
+import { SUPPORTED_PRINTERS, discoverSystemPrinters, inferPrinterLanguage, sendRawToPrinter } from '../printerSupport'
+import { renderRawLabel } from '../printRenderer'
 
 let currentUserId: string | null = null
 
 export function registerIpcHandlers(): void {
-  initDatabase()
 
   ipcMain.handle('auth:login', async (_event, username: string, password: string) => {
     try {
+      console.log('[IPC] auth:login called for', username)
       const user = getUserByUsername(username)
+      console.log('[IPC] User found:', !!user)
       if (!user) {
         createAuditLog({ action: 'login_failed', module: 'auth', status: 'failed', error_message: 'User not found' })
         return { success: false, error: 'Invalid username or password' }
@@ -38,6 +43,7 @@ export function registerIpcHandlers(): void {
       createAuditLog({ action: 'login_success', module: 'auth', user_id: user.id, username: user.username, status: 'success' })
       return { success: true, user: userWithRoles }
     } catch (error: any) {
+      console.error('[IPC] auth:login error:', error.message || error)
       return { success: false, error: error.message }
     }
   })
@@ -104,26 +110,22 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('roles:list', async () => {
-    const db = getDatabase()
-    return db.prepare('SELECT * FROM roles ORDER BY name').all()
+    return query('SELECT * FROM roles ORDER BY name')
   })
 
   ipcMain.handle('roles:create', async (_event, data: any) => {
-    const db = getDatabase()
     const id = uuidv4()
-    db.prepare('INSERT INTO roles (id, name, description) VALUES (?, ?, ?)').run(id, data.name, data.description)
+    run('INSERT INTO roles (id, name, description) VALUES (?, ?, ?)', [id, data.name, data.description])
     return { success: true, id }
   })
 
   ipcMain.handle('roles:update', async (_event, id: string, data: any) => {
-    const db = getDatabase()
-    db.prepare('UPDATE roles SET name = ?, description = ? WHERE id = ?').run(data.name, data.description, id)
+    run('UPDATE roles SET name = ?, description = ? WHERE id = ?', [data.name, data.description, id])
     return { success: true }
   })
 
   ipcMain.handle('roles:delete', async (_event, id: string) => {
-    const db = getDatabase()
-    db.prepare('DELETE FROM roles WHERE id = ?').run(id)
+    run('DELETE FROM roles WHERE id = ?', [id])
     return { success: true }
   })
 
@@ -216,6 +218,7 @@ export function registerIpcHandlers(): void {
     return { success: true, version }
   })
 
+  ipcMain.handle('printers:supportedModels', async () => SUPPORTED_PRINTERS)
   ipcMain.handle('printers:list', async () => listPrinters())
   ipcMain.handle('printers:getById', async (_event, id: string) => getPrinterById(id))
   ipcMain.handle('printers:register', async (_event, data: any) => {
@@ -243,7 +246,29 @@ export function registerIpcHandlers(): void {
       return { success: false, error: error.message }
     }
   })
-  ipcMain.handle('printers:discover', async () => discoverPrinters())
+  ipcMain.handle('printers:discover', async (event) => {
+    const electronPrinters = await event.sender.getPrintersAsync()
+    return discoverSystemPrinters(electronPrinters)
+  })
+  ipcMain.handle('printers:registerDiscovered', async (_event, data: any) => {
+    try {
+      const printer = registerPrinter({
+        name: data.name,
+        printer_type: data.printer_type,
+        connection_type: data.connection_type,
+        ip_address: data.ip_address,
+        port: data.port,
+        machine_name: data.machine_name,
+        driver_name: data.driver_name,
+        dpi: data.dpi,
+      })
+      updatePrinterStatus(printer.id, data.status || 'available')
+      createAuditLog({ action: 'printer_discovered_registered', module: 'printers', user_id: currentUserId || undefined, entity_id: printer.id, status: 'success' })
+      return { success: true, printer: getPrinterById(printer.id) }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
   ipcMain.handle('printers:getStatus', async (_event, id: string) => {
     const printer = getPrinterById(id)
     return printer?.status || 'unknown'
@@ -255,7 +280,37 @@ export function registerIpcHandlers(): void {
     try {
       const job = createPrintJob(data)
       createAuditLog({ action: 'print_job_created', module: 'print', user_id: currentUserId || undefined, entity_id: job.id, status: 'success' })
-      return { success: true, job }
+      try {
+        updatePrinterJobStatus(job.id, 'Rendering')
+        addPrintJobLog(job.id, 'Rendering label payload', 'Rendering')
+
+        const template = getTemplateById(data.template_id)
+        const version = getTemplateVersionById(data.template_version_id || template?.current_version_id)
+        const printer = getPrinterById(data.printer_id)
+        if (!template) throw new Error('Template not found')
+        if (!version) throw new Error('Template version not found')
+        if (!printer) throw new Error('Printer not found')
+
+        const canvas = JSON.parse(version.template_json || '{}')
+        const objects = Array.isArray(canvas.objects) ? canvas.objects : []
+        const language = data.printer_language || inferPrinterLanguage(printer)
+        const payload = renderRawLabel(template, objects, language)
+
+        updatePrinterJobStatus(job.id, 'Sending')
+        addPrintJobLog(job.id, `Sending ${language.toUpperCase()} payload to ${printer.name}`, 'Sending')
+        await sendRawToPrinter({ ...printer, copies: data.copies }, payload)
+
+        updatePrinterJobStatus(job.id, 'Completed')
+        updatePrinterStatus(printer.id, 'available')
+        addPrintJobLog(job.id, 'Print job sent successfully', 'Completed')
+        createAuditLog({ action: 'print_job_completed', module: 'print', user_id: currentUserId || undefined, entity_id: job.id, status: 'success' })
+        return { success: true, job: getPrintJobById(job.id) }
+      } catch (printError: any) {
+        updatePrinterJobStatus(job.id, 'Failed', printError.message)
+        addPrintJobLog(job.id, printError.message, 'Failed')
+        createAuditLog({ action: 'print_job_failed', module: 'print', user_id: currentUserId || undefined, entity_id: job.id, status: 'failed', error_message: printError.message })
+        return { success: false, job: getPrintJobById(job.id), error: printError.message }
+      }
     } catch (error: any) {
       return { success: false, error: error.message }
     }
@@ -299,6 +354,22 @@ export function registerIpcHandlers(): void {
     try {
       const result = deleteGlobalVariable(id)
       return { success: result }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('settings:getAll', async () => getSystemSettings())
+  ipcMain.handle('settings:set', async (_event, key: string, value: string) => {
+    try {
+      return { success: true, setting: setSystemSetting(key, value) }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+  ipcMain.handle('settings:setMany', async (_event, settings: Record<string, string>) => {
+    try {
+      return { success: true, settings: setSystemSettings(settings) }
     } catch (error: any) {
       return { success: false, error: error.message }
     }
@@ -381,8 +452,13 @@ export function registerIpcHandlers(): void {
     if (result.canceled) return null
     return result.filePaths[0] || null
   })
-
-  app.on('before-quit', () => {
-    closeDatabase()
+  ipcMain.handle('app:readFile', async (_event, filePath: string) => {
+    try {
+      const fs = await import('fs')
+      return fs.readFileSync(filePath, 'utf-8')
+    } catch (error: any) {
+      return null
+    }
   })
-}
+
+  }

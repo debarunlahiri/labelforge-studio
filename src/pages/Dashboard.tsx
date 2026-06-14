@@ -77,7 +77,7 @@ export default function Dashboard() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/templates/new')}
+          onClick={() => navigate('/app/templates/new')}
           className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] transition-colors"
         >
           + Create New Label
@@ -108,7 +108,7 @@ export default function Dashboard() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold">Recent Templates</h2>
             <button
-              onClick={() => navigate('/templates')}
+              onClick={() => navigate('/app/templates')}
               className="text-sm text-[var(--color-primary)] hover:underline"
             >
               View all
@@ -124,7 +124,7 @@ export default function Dashboard() {
                 <div
                   key={t.id}
                   className="flex cursor-pointer items-center justify-between rounded-lg border border-[var(--border-color)] p-3 transition-colors hover:bg-slate-50"
-                  onClick={() => navigate(`/templates/${t.id}/edit`)}
+                  onClick={() => navigate(`/app/templates/${t.id}/edit`)}
                 >
                   <div className="flex flex-col">
                     <span className="font-medium text-[var(--text-primary)]">{t.name}</span>
@@ -145,11 +145,11 @@ export default function Dashboard() {
           <h2 className="mb-4 text-lg font-semibold">Quick Actions</h2>
           <div className="space-y-3">
             {[
-              { label: 'Create New Label', icon: '+', path: '/templates/new', color: 'bg-blue-50 text-blue-600 border-blue-200' },
-              { label: 'Open Template Library', icon: '▦', path: '/templates', color: 'bg-purple-50 text-purple-600 border-purple-200' },
-              { label: 'Print Labels', icon: '⎙', path: '/print', color: 'bg-green-50 text-green-600 border-green-200' },
-              { label: 'View Print History', icon: '⊞', path: '/print-history', color: 'bg-orange-50 text-orange-600 border-orange-200' },
-              { label: 'Manage Printers', icon: '⌨', path: '/printers', color: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
+              { label: 'Create New Label', icon: '+', path: '/app/templates/new', color: 'bg-blue-50 text-blue-600 border-blue-200' },
+              { label: 'Open Template Library', icon: '▦', path: '/app/templates', color: 'bg-purple-50 text-purple-600 border-purple-200' },
+              { label: 'Print Labels', icon: '⎙', path: '/app/print', color: 'bg-green-50 text-green-600 border-green-200' },
+              { label: 'View Print History', icon: '⊞', path: '/app/print-history', color: 'bg-orange-50 text-orange-600 border-orange-200' },
+              { label: 'Manage Printers', icon: '⌨', path: '/app/printers', color: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
             ].map((action) => (
               <button
                 key={action.label}

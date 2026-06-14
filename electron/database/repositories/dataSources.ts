@@ -1,4 +1,4 @@
-import { getDatabase } from '../db'
+import { query, queryOne, run, runDelete } from '../dbHelpers'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface DataSource {
@@ -13,14 +13,11 @@ export interface DataSource {
 }
 
 export function listDataSources(templateId: string): DataSource[] {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM template_data_sources WHERE template_id = ? ORDER BY created_at').all(templateId) as DataSource[]
+  return query('SELECT * FROM template_data_sources WHERE template_id = ? ORDER BY created_at', [templateId]) as DataSource[]
 }
 
 export function getDataSourceById(id: string): DataSource | null {
-  const db = getDatabase()
-  const row = db.prepare('SELECT * FROM template_data_sources WHERE id = ?').get(id) as DataSource | undefined
-  return row || null
+  return queryOne('SELECT * FROM template_data_sources WHERE id = ?', [id]) as DataSource | null
 }
 
 export function createDataSource(data: {
@@ -30,13 +27,12 @@ export function createDataSource(data: {
   config_json: string
   is_default?: number
 }): DataSource {
-  const db = getDatabase()
   const id = uuidv4()
 
-  db.prepare(
-    `INSERT INTO template_data_sources (id, template_id, name, type, config_json, is_default)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, data.template_id, data.name, data.type, data.config_json, data.is_default ?? 0)
+  run(
+    'INSERT INTO template_data_sources (id, template_id, name, type, config_json, is_default) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, data.template_id, data.name, data.type, data.config_json, data.is_default ?? 0]
+  )
 
   return getDataSourceById(id)!
 }
@@ -47,7 +43,6 @@ export function updateDataSource(id: string, data: {
   config_json?: string
   is_default?: number
 }): DataSource | null {
-  const db = getDatabase()
   const updates: string[] = []
   const values: any[] = []
 
@@ -73,12 +68,10 @@ export function updateDataSource(id: string, data: {
   updates.push("updated_at = datetime('now')")
   values.push(id)
 
-  db.prepare(`UPDATE template_data_sources SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+  run(`UPDATE template_data_sources SET ${updates.join(', ')} WHERE id = ?`, values)
   return getDataSourceById(id)
 }
 
 export function deleteDataSource(id: string): boolean {
-  const db = getDatabase()
-  const result = db.prepare('DELETE FROM template_data_sources WHERE id = ?').run(id)
-  return result.changes > 0
+  return runDelete('DELETE FROM template_data_sources WHERE id = ?', [id])
 }

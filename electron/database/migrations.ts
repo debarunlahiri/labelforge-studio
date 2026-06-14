@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+import type { Database as SqlJsDatabase } from 'sql.js'
 
 const MIGRATIONS: { version: number; sql: string }[] = [
   {
@@ -185,23 +185,26 @@ const MIGRATIONS: { version: number; sql: string }[] = [
   },
 ]
 
-export function runMigrations(db: Database.Database): void {
-  db.exec(`
+export function runMigrations(db: SqlJsDatabase): void {
+  db.run(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
 
-  const applied = db
-    .prepare('SELECT version FROM schema_migrations ORDER BY version')
-    .all()
-    .map((row: any) => row.version)
+  const results = db.exec('SELECT version FROM schema_migrations ORDER BY version')
+  const applied: number[] = []
+  if (results.length > 0 && results[0].values) {
+    for (const row of results[0].values) {
+      applied.push(row[0] as number)
+    }
+  }
 
   for (const migration of MIGRATIONS) {
     if (!applied.includes(migration.version)) {
-      db.exec(migration.sql)
-      db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version)
+      db.run(migration.sql)
+      db.run(`INSERT INTO schema_migrations (version) VALUES (${migration.version})`)
     }
   }
 }

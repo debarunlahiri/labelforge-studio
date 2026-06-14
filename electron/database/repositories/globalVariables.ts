@@ -1,4 +1,4 @@
-import { getDatabase } from '../db'
+import { query, queryOne, run, runDelete } from '../dbHelpers'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface GlobalVariable {
@@ -13,8 +13,7 @@ export interface GlobalVariable {
 }
 
 export function listGlobalVariables(): GlobalVariable[] {
-  const db = getDatabase()
-  return db.prepare('SELECT * FROM global_variables ORDER BY variable_key').all() as GlobalVariable[]
+  return query('SELECT * FROM global_variables ORDER BY variable_key') as GlobalVariable[]
 }
 
 export function createGlobalVariable(data: {
@@ -23,15 +22,14 @@ export function createGlobalVariable(data: {
   data_type?: string
   description?: string
 }): GlobalVariable {
-  const db = getDatabase()
   const id = uuidv4()
 
-  db.prepare(
-    `INSERT INTO global_variables (id, variable_key, variable_value, data_type, description)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(id, data.variable_key, data.variable_value || null, data.data_type || 'string', data.description || null)
+  run(
+    'INSERT INTO global_variables (id, variable_key, variable_value, data_type, description) VALUES (?, ?, ?, ?, ?)',
+    [id, data.variable_key, data.variable_value || null, data.data_type || 'string', data.description || null]
+  )
 
-  return db.prepare('SELECT * FROM global_variables WHERE id = ?').get(id) as GlobalVariable
+  return queryOne('SELECT * FROM global_variables WHERE id = ?', [id]) as GlobalVariable
 }
 
 export function updateGlobalVariable(id: string, data: {
@@ -40,7 +38,6 @@ export function updateGlobalVariable(id: string, data: {
   description?: string
   is_active?: number
 }): GlobalVariable {
-  const db = getDatabase()
   const updates: string[] = []
   const values: any[] = []
 
@@ -64,12 +61,10 @@ export function updateGlobalVariable(id: string, data: {
   updates.push("updated_at = datetime('now')")
   values.push(id)
 
-  db.prepare(`UPDATE global_variables SET ${updates.join(', ')} WHERE id = ?`).run(...values)
-  return db.prepare('SELECT * FROM global_variables WHERE id = ?').get(id) as GlobalVariable
+  run(`UPDATE global_variables SET ${updates.join(', ')} WHERE id = ?`, values)
+  return queryOne('SELECT * FROM global_variables WHERE id = ?', [id]) as GlobalVariable
 }
 
 export function deleteGlobalVariable(id: string): boolean {
-  const db = getDatabase()
-  const result = db.prepare('DELETE FROM global_variables WHERE id = ?').run(id)
-  return result.changes > 0
+  return runDelete('DELETE FROM global_variables WHERE id = ?', [id])
 }

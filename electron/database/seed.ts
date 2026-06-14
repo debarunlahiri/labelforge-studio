@@ -1,27 +1,11 @@
-import Database from 'better-sqlite3'
+import type { Database as SqlJsDatabase } from 'sql.js'
 import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 
-export function seedDatabase(db: Database.Database): void {
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
-  if (userCount.count > 0) return
-
-  const insertRole = db.prepare(
-    'INSERT INTO roles (id, name, description) VALUES (?, ?, ?)'
-  )
-  const insertPermission = db.prepare(
-    'INSERT INTO permissions (id, code, description) VALUES (?, ?, ?)'
-  )
-  const insertUser = db.prepare(
-    `INSERT INTO users (id, username, password_hash, full_name, email, is_active)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  )
-  const insertUserRole = db.prepare(
-    'INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)'
-  )
-  const insertRolePermission = db.prepare(
-    'INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)'
-  )
+export function seedDatabase(db: SqlJsDatabase): void {
+  const result = db.exec('SELECT COUNT(*) as count FROM users')
+  const count = result.length > 0 && result[0].values.length > 0 ? (result[0].values[0][0] as number) : 0
+  if (count > 0) return
 
   const roles = [
     { id: uuidv4(), name: 'Super Admin', description: 'Full system access' },
@@ -34,7 +18,7 @@ export function seedDatabase(db: Database.Database): void {
 
   const roleMap: Record<string, string> = {}
   for (const role of roles) {
-    insertRole.run(role.id, role.name, role.description)
+    db.run('INSERT INTO roles (id, name, description) VALUES (?, ?, ?)', [role.id, role.name, role.description])
     roleMap[role.name] = role.id
   }
 
@@ -54,42 +38,40 @@ export function seedDatabase(db: Database.Database): void {
 
   const permMap: Record<string, string> = {}
   for (const perm of permissions) {
-    insertPermission.run(perm.id, perm.code, perm.description)
+    db.run('INSERT INTO permissions (id, code, description) VALUES (?, ?, ?)', [perm.id, perm.code, perm.description])
     permMap[perm.code] = perm.id
   }
 
   const adminPasswordHash = bcrypt.hashSync('admin', 10)
   const adminId = uuidv4()
-  insertUser.run(adminId, 'admin', adminPasswordHash, 'Administrator', 'admin@labelforge.local', 1)
+  db.run('INSERT INTO users (id, username, password_hash, full_name, email, is_active) VALUES (?, ?, ?, ?, ?, 1)', [adminId, 'admin', adminPasswordHash, 'Administrator', 'admin@labelforge.local'])
 
-  insertUserRole.run(uuidv4(), adminId, roleMap['Super Admin'])
+  db.run('INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)', [uuidv4(), adminId, roleMap['Super Admin']])
 
   for (const perm of permissions) {
-    insertRolePermission.run(uuidv4(), roleMap['Super Admin'], perm.id)
+    db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Super Admin'], perm.id])
   }
 
   for (const perm of permissions) {
-    insertRolePermission.run(uuidv4(), roleMap['Admin'], perm.id)
+    db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Admin'], perm.id])
   }
 
-  const designerPerms = [
-    'template:create', 'template:edit', 'template:print',
-  ]
+  const designerPerms = ['template:create', 'template:edit', 'template:print']
   for (const code of designerPerms) {
-    insertRolePermission.run(uuidv4(), roleMap['Designer'], permMap[code])
+    db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Designer'], permMap[code]])
   }
 
   const approverPerms = ['template:approve', 'template:edit']
   for (const code of approverPerms) {
-    insertRolePermission.run(uuidv4(), roleMap['Approver'], permMap[code])
+    db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Approver'], permMap[code]])
   }
 
   const operatorPerms = ['template:print', 'template:reprint']
   for (const code of operatorPerms) {
-    insertRolePermission.run(uuidv4(), roleMap['Print Operator'], permMap[code])
+    db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Print Operator'], permMap[code]])
   }
 
-  insertRolePermission.run(uuidv4(), roleMap['Auditor'], permMap['audit:view'])
+  db.run('INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)', [uuidv4(), roleMap['Auditor'], permMap['audit:view']])
 
   const globalVariables = [
     { id: uuidv4(), key: 'company_name', value: 'LabelForge Studio', data_type: 'string', description: 'Company name' },
@@ -100,11 +82,10 @@ export function seedDatabase(db: Database.Database): void {
     { id: uuidv4(), key: 'current_financial_year', value: '2025-2026', data_type: 'string', description: 'Current financial year' },
   ]
 
-  const insertVar = db.prepare(
-    `INSERT INTO global_variables (id, variable_key, variable_value, data_type, description)
-     VALUES (?, ?, ?, ?, ?)`
-  )
   for (const v of globalVariables) {
-    insertVar.run(v.id, v.key, v.value, v.data_type, v.description)
+    db.run('INSERT INTO global_variables (id, variable_key, variable_value, data_type, description) VALUES (?, ?, ?, ?, ?)', [v.id, v.key, v.value, v.data_type, v.description])
   }
+
+  db.run('INSERT INTO system_settings (key, value) VALUES (?, ?)', ['auto_save_enabled', 'true'])
+  db.run('INSERT INTO system_settings (key, value) VALUES (?, ?)', ['auto_save_interval_seconds', '30'])
 }
