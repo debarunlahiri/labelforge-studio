@@ -11,10 +11,9 @@ LabelForge Studio
 │   ├── Barcode designer (bwip-js)
 │   ├── Data source configuration
 │   ├── Print screen
-│   └── User & settings management
+│   └── Settings management
 ├── Embedded SQLite Database
 │   ├── Templates & versions
-│   ├── Users, roles & permissions
 │   ├── Print jobs & printer status
 │   ├── Audit logs
 │   └── Global variables
@@ -34,7 +33,6 @@ LabelForge Studio
 | Database | SQLite (better-sqlite3, embedded) |
 | Styling | Tailwind CSS v4 |
 | Barcode/QR | bwip-js |
-| Password Hashing | bcryptjs |
 
 ## Getting Started
 
@@ -63,6 +61,48 @@ This starts Vite dev server with Electron. The app opens automatically.
 npm run build
 ```
 
+### Desktop Packages
+
+Build the Electron desktop package for the current platform:
+
+```bash
+npm run electron:build
+```
+
+Build a macOS ZIP without downloading the Electron runtime:
+
+```bash
+npm run electron:build:offline
+```
+
+This uses the Electron runtime already installed at `node_modules/electron/dist`.
+
+Build Windows `.exe` packages:
+
+```bash
+npm run electron:build:win
+```
+
+The Windows build produces:
+
+- NSIS installer: `dist/LabelForge Studio Setup 1.0.0.exe`
+- Portable executable: `dist/LabelForge Studio 1.0.0.exe`
+
+For best results, run the Windows build on a Windows machine. Cross-building Windows installers from macOS can require Wine.
+
+#### Offline Windows Build
+
+A Windows `.exe` needs the Windows Electron binary, not the macOS runtime in `node_modules/electron/dist`. On a restricted company network, prepare one of these before running `npm run electron:build:win`:
+
+1. Pre-populate the electron-builder cache with `electron-v42.4.0-win32-x64.zip`.
+2. Configure npm/proxy access so electron-builder can download Electron from GitHub.
+3. Use an internal artifact mirror and set `ELECTRON_MIRROR` to that mirror URL.
+
+Typical electron-builder cache locations:
+
+- macOS: `~/Library/Caches/electron-builder`
+- Windows: `%LOCALAPPDATA%\electron-builder\Cache`
+
 ### Lint
 
 ```bash
@@ -79,9 +119,8 @@ labelforge-studio/
 │   ├── database/
 │   │   ├── db.ts                    # SQLite initialization (embedded)
 │   │   ├── migrations.ts           # Schema migrations
-│   │   ├── seed.ts                 # Seed data (admin, roles, permissions)
+│   │   ├── seed.ts                 # Seed data (global variables and settings)
 │   │   └── repositories/          # Data access layer
-│   │       ├── users.ts
 │   │       ├── templates.ts
 │   │       ├── templateVersions.ts
 │   │       ├── printers.ts
@@ -97,11 +136,10 @@ labelforge-studio/
 │       └── index.ts                # All IPC handlers
 ├── src/                             # React renderer app
 │   ├── main.tsx                     # React entry
-│   ├── App.tsx                      # Routes & auth guard (lazy-loaded pages)
+│   ├── App.tsx                      # Routes (lazy-loaded pages)
 │   ├── index.css                    # Tailwind + custom properties
 │   ├── types/index.ts              # TypeScript types (20+ interfaces)
 │   ├── store/                       # Zustand stores
-│   │   ├── authStore.ts            # Auth with auto-login bypass
 │   │   ├── templateStore.ts        # Template CRUD & versions
 │   │   ├── designerStore.ts        # Objects, undo/redo, clipboard, multi-select
 │   │   └── appStore.ts             # UI state
@@ -110,7 +148,6 @@ labelforge-studio/
 │   │   ├── Sidebar.tsx
 │   │   └── Header.tsx
 │   ├── pages/
-│   │   ├── Login.tsx
 │   │   ├── Dashboard.tsx           # Stats, recent templates, quick actions
 │   │   ├── TemplateLibrary.tsx      # Search, filter, export/import
 │   │   ├── TemplateDesigner.tsx     # Full designer with rulers, grid, zoom
@@ -120,7 +157,6 @@ labelforge-studio/
 │   │   ├── TemplateVersions.tsx     # Version history with diff comparison
 │   │   ├── PrintTimeInput.tsx       # Dynamic form for print-time fields
 │   │   ├── PrinterStatus.tsx
-│   │   ├── UserManagement.tsx
 │   │   ├── Settings.tsx
 │   │   ├── AuditLogs.tsx
 │   │   └── GlobalVariables.tsx
@@ -141,13 +177,9 @@ labelforge-studio/
 └── tsconfig*.json
 ```
 
-## Default Login
+## Offline Access
 
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin | Super Admin |
-
-Auto-login is enabled by default (`AUTO_LOGIN_ENABLED` flag in authStore). The database is seeded on first launch with an admin user, default roles (Super Admin, Admin, Designer, Approver, Print Operator, Auditor), permissions, and global variables.
+LabelForge Studio runs as an offline desktop application with no sign-in, registration, users, roles, or permissions. The app opens directly into the workspace and all features are available locally.
 
 ## Module Status
 
@@ -156,9 +188,7 @@ Auto-login is enabled by default (`AUTO_LOGIN_ENABLED` flag in authStore). The d
 - [x] Electron app shell with secure context isolation
 - [x] React + TypeScript + Vite setup
 - [x] SQLite embedded database with migrations
-- [x] Authentication (login/logout, session tracking)
-- [x] Auto-login bypass for development
-- [x] Role-based access control (6 roles, 11 permissions)
+- [x] Offline desktop access with no sign-in or registration
 - [x] Template library (CRUD, search, filter, duplicate, archive)
 - [x] Template designer canvas (Konva.js)
 - [x] Label objects: Text, Barcode, QR Code, Shape, Line, Image, Date/Time, Counter, RFID
@@ -172,10 +202,9 @@ Auto-login is enabled by default (`AUTO_LOGIN_ENABLED` flag in authStore). The d
 - [x] Print preview with PDF/PNG/ZPL export navigation
 - [x] Print job history with cancel/retry and 10s auto-refresh
 - [x] Printer registration and management
-- [x] User management (CRUD, enable/disable)
 - [x] Global variables management
 - [x] Audit logging
-- [x] Settings page (general, database, printing, security)
+- [x] Settings page (general, database, printing)
 
 ### Phase 2 - Data Sources (In Progress)
 
@@ -236,10 +265,12 @@ Auto-login is enabled by default (`AUTO_LOGIN_ENABLED` flag in authStore). The d
 ### Phase 6 - Polish (Not Started)
 
 - [x] Code-splitting (lazy-loaded routes, main chunk: 234KB)
+- [x] macOS offline ZIP packaging (electron-builder)
+- [x] Windows EXE packaging configuration (NSIS + portable)
 - [ ] App icon and splash screen
 - [ ] Auto-update mechanism
 - [ ] Code-signed builds
-- [ ] macOS and Windows installers (electron-builder)
+- [ ] Signed macOS and Windows installers
 - [ ] Performance optimization for 10K+ record batches
 
 ## Designer Keyboard Shortcuts
@@ -303,7 +334,6 @@ The application uses **SQLite** embedded directly in the app. No external databa
 - `contextIsolation: true` — Renderer is isolated from Node.js
 - `nodeIntegration: false` — No direct Node access in renderer
 - `sandbox: false` — Required for better-sqlite3 native module
-- Passwords are hashed with bcryptjs
 - All database operations go through IPC (no direct DB access from renderer)
 - Audit logging for all sensitive operations
 
@@ -316,6 +346,12 @@ After `npm run build`, the project produces:
 - `dist-electron/preload.js` — Preload context bridge (~3KB)
 - Main chunk: ~235KB (down from 1610KB pre code-splitting)
 - Designer chunk: ~986KB (Konva.js + bwip-js)
+
+After desktop package builds, electron-builder writes packages to `dist/`:
+
+- macOS offline ZIP: `dist/LabelForge Studio-1.0.0-arm64-mac.zip`
+- Windows installer: `dist/LabelForge Studio Setup 1.0.0.exe`
+- Windows portable app: `dist/LabelForge Studio 1.0.0.exe`
 
 ## License
 

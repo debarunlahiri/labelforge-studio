@@ -1,30 +1,3 @@
-export interface User {
-  id: string
-  username: string
-  full_name: string | null
-  email: string | null
-  is_active: number
-  last_login_at: string | null
-  created_at: string
-  updated_at: string | null
-  roles: string[]
-  permissions: string[]
-  role_names?: string
-}
-
-export interface Role {
-  id: string
-  name: string
-  description: string | null
-  created_at: string
-}
-
-export interface Permission {
-  id: string
-  code: string
-  description: string | null
-}
-
 export interface Template {
   id: string
   name: string

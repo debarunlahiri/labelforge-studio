@@ -1,8 +1,6 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
 
 export default function Header() {
-  const { user } = useAuthStore()
   const navigate = useNavigate()
 
   return (
@@ -23,9 +21,6 @@ export default function Header() {
         >
           Home
         </button>
-        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-          <span>{user?.username}</span>
-        </div>
       </div>
     </header>
   )

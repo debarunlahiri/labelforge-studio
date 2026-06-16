@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useAuthStore } from '../store/authStore'
 
 export default function Settings() {
-  const { user } = useAuthStore()
   const [activeTab, setActiveTab] = useState('general')
   const [generalSettings, setGeneralSettings] = useState({
     companyName: '',
@@ -56,7 +54,6 @@ export default function Settings() {
     { id: 'general', label: 'General' },
     { id: 'database', label: 'Database' },
     { id: 'printing', label: 'Printing' },
-    { id: 'security', label: 'Security' },
   ]
 
   return (
@@ -181,7 +178,7 @@ export default function Settings() {
                 </p>
               </div>
               <div className="mt-4 space-y-3 text-sm text-[var(--text-secondary)]">
-                <p>The database stores all your templates, print jobs, users, and settings locally within the application.</p>
+                <p>The database stores all your templates, print jobs, and settings locally within the application.</p>
                 <p>Database location: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">~/Library/Application Support/labelforge-studio/labelforge.db</code></p>
               </div>
             </div>
@@ -207,35 +204,6 @@ export default function Settings() {
                 <div className="flex items-center gap-3">
                   <input type="checkbox" defaultChecked className="h-4 w-4" />
                   <label className="text-sm font-medium">Log all print jobs</label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'security' && (
-            <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold">Security Settings</h2>
-              <div className="space-y-4">
-                <div className="rounded-lg bg-slate-50 p-4 text-sm">
-                  <p><strong>Current User:</strong> {user?.username || 'N/A'}</p>
-                  <p><strong>Roles:</strong> {user?.roles?.join(', ') || 'N/A'}</p>
-                  <p><strong>Permissions:</strong> {user?.permissions?.length || 0} granted</p>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Session Timeout (minutes)</label>
-                  <input
-                    type="number"
-                    defaultValue={30}
-                    className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                  <label className="text-sm font-medium">Require password for printing</label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" defaultChecked className="h-4 w-4" />
-                  <label className="text-sm font-medium">Enable audit logging</label>
                 </div>
               </div>
             </div>

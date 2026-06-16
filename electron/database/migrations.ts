@@ -4,51 +4,6 @@ const MIGRATIONS: { version: number; sql: string }[] = [
   {
     version: 1,
     sql: `
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        full_name TEXT,
-        email TEXT,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        last_login_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS roles (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        description TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS permissions (
-        id TEXT PRIMARY KEY,
-        code TEXT NOT NULL UNIQUE,
-        description TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS user_roles (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        role_id TEXT NOT NULL,
-        assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (role_id) REFERENCES roles(id),
-        UNIQUE(user_id, role_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS role_permissions (
-        id TEXT PRIMARY KEY,
-        role_id TEXT NOT NULL,
-        permission_id TEXT NOT NULL,
-        granted_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (role_id) REFERENCES roles(id),
-        FOREIGN KEY (permission_id) REFERENCES permissions(id),
-        UNIQUE(role_id, permission_id)
-      );
-
       CREATE TABLE IF NOT EXISTS templates (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -70,10 +25,9 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         current_version_id TEXT,
         status TEXT NOT NULL DEFAULT 'Draft',
         tags TEXT,
-        created_by TEXT NOT NULL,
+        created_by TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (created_by) REFERENCES users(id)
+        updated_at TEXT DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS template_versions (
@@ -83,13 +37,11 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         template_json TEXT NOT NULL,
         change_comment TEXT,
         status TEXT NOT NULL DEFAULT 'Draft',
-        created_by TEXT NOT NULL,
+        created_by TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         approved_by TEXT,
         approved_at TEXT,
-        FOREIGN KEY (template_id) REFERENCES templates(id),
-        FOREIGN KEY (created_by) REFERENCES users(id),
-        FOREIGN KEY (approved_by) REFERENCES users(id)
+        FOREIGN KEY (template_id) REFERENCES templates(id)
       );
 
       CREATE TABLE IF NOT EXISTS template_data_sources (
@@ -135,7 +87,6 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         started_at TEXT,
         completed_at TEXT,
         FOREIGN KEY (template_id) REFERENCES templates(id),
-        FOREIGN KEY (requested_by) REFERENCES users(id),
         FOREIGN KEY (printer_id) REFERENCES printers(id)
       );
 

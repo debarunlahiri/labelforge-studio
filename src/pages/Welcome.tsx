@@ -1,31 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
 
 export default function Welcome() {
   const navigate = useNavigate()
-  const { checkAuth, isAuthenticated } = useAuthStore()
   const [isOpening, setIsOpening] = useState(false)
   const [recentTemplates, setRecentTemplates] = useState<any[]>([])
 
   useEffect(() => {
     console.log('[Welcome] electronAPI available:', !!window.electronAPI)
-    const init = async () => {
-      try {
-        await checkAuth()
-        await loadRecent()
-      } catch (e: any) {
-        console.error('[Welcome] Init error:', e.message || e)
-      }
-    }
-    init()
+    loadRecent()
   }, [])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadRecent()
-    }
-  }, [isAuthenticated])
 
   const loadRecent = async () => {
     try {
@@ -71,17 +55,6 @@ export default function Welcome() {
 
   const handleBrowseAll = () => {
     navigate('/app/templates')
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-700">
-        <div className="text-center">
-          <div className="mx-auto mb-5 h-16 w-16 animate-spin rounded-full border-4 border-white/20 border-t-[var(--color-primary)]" />
-          <p className="text-white">Loading...</p>
-        </div>
-      </div>
-    )
   }
 
   return (

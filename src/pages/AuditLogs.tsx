@@ -51,7 +51,7 @@ export default function AuditLogs() {
             <thead>
               <tr className="border-b border-[var(--border-color)] bg-slate-50">
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">Timestamp</th>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">User</th>
+                <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">Actor</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">Action</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">Module</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">Entity</th>

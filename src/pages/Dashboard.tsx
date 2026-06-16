@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
 
 interface DashboardCard {
   title: string
@@ -10,7 +9,6 @@ interface DashboardCard {
 }
 
 export default function Dashboard() {
-  const { user } = useAuthStore()
   const navigate = useNavigate()
   const [stats, setStats] = useState({
     totalTemplates: 0,
@@ -70,7 +68,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            Welcome, {user?.full_name || user?.username || 'User'}
+            Welcome to LabelForge Studio
           </h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Here's an overview of your label system

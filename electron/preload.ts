@@ -1,27 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
-  auth: {
-    login: (username: string, password: string) =>
-      ipcRenderer.invoke('auth:login', username, password),
-    logout: () => ipcRenderer.invoke('auth:logout'),
-    getCurrentUser: () => ipcRenderer.invoke('auth:getCurrentUser'),
-    changePassword: (userId: string, oldPassword: string, newPassword: string) =>
-      ipcRenderer.invoke('auth:changePassword', userId, oldPassword, newPassword),
-  },
-  users: {
-    list: () => ipcRenderer.invoke('users:list'),
-    getById: (id: string) => ipcRenderer.invoke('users:getById', id),
-    create: (data: any) => ipcRenderer.invoke('users:create', data),
-    update: (id: string, data: any) => ipcRenderer.invoke('users:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('users:delete', id),
-  },
-  roles: {
-    list: () => ipcRenderer.invoke('roles:list'),
-    create: (data: any) => ipcRenderer.invoke('roles:create', data),
-    update: (id: string, data: any) => ipcRenderer.invoke('roles:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('roles:delete', id),
-  },
   templates: {
     list: (filters?: any) => ipcRenderer.invoke('templates:list', filters),
     getById: (id: string) => ipcRenderer.invoke('templates:getById', id),
@@ -40,8 +19,7 @@ const api = {
       ipcRenderer.invoke('templateVersions:save', templateId, data),
     submitForApproval: (id: string) =>
       ipcRenderer.invoke('templateVersions:submitForApproval', id),
-    approve: (id: string, approverId: string) =>
-      ipcRenderer.invoke('templateVersions:approve', id, approverId),
+    approve: (id: string) => ipcRenderer.invoke('templateVersions:approve', id),
     reject: (id: string, reason: string) =>
       ipcRenderer.invoke('templateVersions:reject', id, reason),
   },

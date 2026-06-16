@@ -1,5 +1,4 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faClipboardList,
@@ -11,13 +10,11 @@ import {
   faPrint,
   faTableCells,
   faTags,
-  faUsers,
 } from '@fortawesome/free-solid-svg-icons'
 
 const navItems = [
   { path: '/app/dashboard', label: 'Dashboard', icon: faGaugeHigh },
   { path: '/app/templates', label: 'Templates', icon: faTags },
-  { path: '/app/users', label: 'Users', icon: faUsers },
   { path: '/app/global-variables', label: 'Variables', icon: faDatabase },
   { path: '/app/audit-logs', label: 'Audit Logs', icon: faFileLines },
   { path: '/app/settings', label: 'Settings', icon: faGear },
@@ -30,7 +27,6 @@ const printingItems = [
 ]
 
 export default function Sidebar() {
-  const { user } = useAuthStore()
   const location = useLocation()
 
   return (
@@ -114,21 +110,8 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/20 p-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
-            {user?.full_name?.[0]?.toUpperCase() ||
-              user?.username?.[0]?.toUpperCase() ||
-              "U"}
-          </div>
-          <div className="min-w-0 flex flex-col">
-            <span className="truncate text-xs font-medium">
-              {user?.full_name || user?.username || "User"}
-            </span>
-            <span className="text-[10px] text-slate-400">
-              {user?.roles?.[0] || "No role"}
-            </span>
-          </div>
-        </div>
+        <div className="text-xs font-medium text-slate-300">Offline desktop mode</div>
+        <div className="mt-1 text-[10px] text-slate-500">No sign-in required</div>
       </div>
     </aside>
   );
