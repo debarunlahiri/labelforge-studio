@@ -47,6 +47,227 @@ LabelForge Studio
 npm install
 ```
 
+For repeatable installs from the committed lockfile, prefer:
+
+```bash
+npm ci
+```
+
+#### Company Proxy Install Issues
+
+If install fails on a company network with `EINTEGRITY`, `integrity checksum failed`, or checksum mismatch errors, npm is usually receiving a corrupted or cached package tarball from the proxy/cache layer.
+
+First check which npm registry and proxy settings are active:
+
+```bash
+npm config get registry
+npm config get proxy
+npm config get https-proxy
+npm config list
+```
+
+If `proxy` or `https-proxy` prints `null`, npm is not using a proxy.
+
+Then clear the local npm cache and reinstall from the lockfile:
+
+```bash
+npm cache clean --force
+rm -rf node_modules
+npm ci
+```
+
+If the error continues, configure npm to use your company proxy and registry. Replace the proxy URLs with your company values:
+
+```bash
+npm config set registry https://registry.npmjs.org/
+npm config set proxy http://proxy.company.com:8080
+npm config set https-proxy http://proxy.company.com:8080
+npm config set fetch-retries 5
+npm config set fetch-retry-mintimeout 20000
+npm config set fetch-retry-maxtimeout 120000
+```
+
+Verify that the settings were saved:
+
+```bash
+npm config get proxy
+npm config get https-proxy
+```
+
+If the proxy is set but `EINTEGRITY` still happens, capture the exact package that fails:
+
+```bash
+npm ci --verbose
+```
+
+Then try a fully clean reinstall:
+
+```bash
+npm cache clean --force
+npm cache verify
+rm -rf node_modules
+npm ci --prefer-online
+```
+
+If it still fails on the same package, the company proxy or internal registry is likely serving a corrupted cached tarball. Ask the network/proxy team to purge that package tarball from the npm cache.
+
+If your company uses an internal npm mirror such as Nexus, Artifactory, or Verdaccio, use that registry instead:
+
+```bash
+npm config set registry https://your-company-npm-registry.example.com/
+```
+
+If your company uses SSL inspection, ask IT for the company CA certificate and configure npm to trust it:
+
+```bash
+npm config set cafile /path/to/company-ca.pem
+```
+
+Only disable SSL verification if your company explicitly allows it:
+
+```bash
+npm config set strict-ssl false
+```
+
+If the install fails with certificate or TLS errors, run:
+
+```bash
+npm ping --verbose
+```
+
+Do not fix checksum errors by deleting `package-lock.json`. The lockfile protects the install from silently using different package contents. If only one package fails repeatedly, ask the network/proxy team to purge that package tarball from the internal npm cache.
+
+#### Network URLs Used By Install And Packaging
+
+For `npm ci` / `npm install`, this project fetches package tarballs from the URLs stored in `package-lock.json`. In the current lockfile, there are 527 package tarball URLs and they all use this host:
+
+```text
+https://registry.npmjs.org
+```
+
+To print the complete exact tarball URL list:
+
+```bash
+node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); const urls=[...new Set(Object.values(lock.packages||{}).map(p=>p.resolved).filter(Boolean))].sort(); console.log(urls.join('\n'))"
+```
+
+To save the complete exact tarball URL list to a file:
+
+```bash
+node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); const urls=[...new Set(Object.values(lock.packages||{}).map(p=>p.resolved).filter(Boolean))].sort(); fs.writeFileSync('npm-fetch-urls.txt', urls.join('\n') + '\n')"
+```
+
+For Electron install and package builds, allow these additional download locations unless your company mirrors them internally:
+
+```text
+https://github.com/electron/electron/releases/download/
+https://github.com/electron-userland/electron-builder-binaries/releases/download/
+```
+
+Typical Electron binary URLs for this project's configured Electron version:
+
+```text
+https://github.com/electron/electron/releases/download/v42.4.0/electron-v42.4.0-darwin-arm64.zip
+https://github.com/electron/electron/releases/download/v42.4.0/electron-v42.4.0-win32-x64.zip
+https://github.com/electron/electron/releases/download/v42.4.0/SHASUMS256.txt
+```
+
+If GitHub downloads are blocked, use an internal mirror and configure:
+
+```bash
+npm config set electron_mirror https://your-company-artifact-mirror.example.com/electron/
+export ELECTRON_MIRROR=https://your-company-artifact-mirror.example.com/electron/
+```
+
+#### Manual Browser Download Offline Setup
+
+If the company proxy blocks npm but you can download files manually in a browser, use this process.
+
+1. Save the complete npm tarball URL list:
+
+```bash
+node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); const urls=[...new Set(Object.values(lock.packages||{}).map(p=>p.resolved).filter(Boolean))].sort(); fs.writeFileSync('npm-fetch-urls.txt', urls.join('\n') + '\n')"
+```
+
+2. Open each URL from `npm-fetch-urls.txt` in the browser and download the `.tgz` files into a local folder, for example:
+
+```text
+offline-cache/npm-tarballs/
+```
+
+3. Add the downloaded tarballs to the local npm cache:
+
+```bash
+for file in offline-cache/npm-tarballs/*.tgz; do npm cache add "$file"; done
+```
+
+4. Install from the local npm cache:
+
+```bash
+rm -rf node_modules
+npm ci --offline
+```
+
+If `npm ci --offline` says a package is missing from the cache, download that missing `.tgz`, run `npm cache add` for it, then run `npm ci --offline` again.
+
+For Electron desktop package builds, also download the Electron runtime zip files manually if GitHub is blocked.
+
+Download these files for this project:
+
+```text
+https://github.com/electron/electron/releases/download/v42.4.0/electron-v42.4.0-darwin-arm64.zip
+https://github.com/electron/electron/releases/download/v42.4.0/electron-v42.4.0-win32-x64.zip
+https://github.com/electron/electron/releases/download/v42.4.0/SHASUMS256.txt
+```
+
+Put the downloaded files into the Electron cache.
+
+macOS:
+
+```text
+~/Library/Caches/electron/
+```
+
+Windows:
+
+```text
+%LOCALAPPDATA%\electron\Cache
+```
+
+For electron-builder helper binaries, download any missing files named in the build error from:
+
+```text
+https://github.com/electron-userland/electron-builder-binaries/releases/download/
+```
+
+Then place them under the electron-builder cache.
+
+macOS:
+
+```text
+~/Library/Caches/electron-builder/
+```
+
+Windows:
+
+```text
+%LOCALAPPDATA%\electron-builder\Cache
+```
+
+After the caches are populated, run:
+
+```bash
+npm ci --offline
+npm run build
+npm run electron:build
+```
+
+For Windows `.exe` output:
+
+```bash
+npm run electron:build:win
+```
+
 ### Development
 
 ```bash
@@ -61,13 +282,34 @@ This starts Vite dev server with Electron. The app opens automatically.
 npm run build
 ```
 
+This creates the production app bundles only:
+
+- Renderer bundle: `dist/`
+- Electron main/preload bundle: `dist-electron/`
+
+This command does not create installable desktop packages. Use the Electron package commands below for `.app`, `.zip`, and `.exe` outputs.
+
 ### Desktop Packages
+
+Package build commands:
+
+| Output | Command |
+|--------|---------|
+| Production bundles only | `npm run build` |
+| Current platform desktop package | `npm run electron:build` |
+| macOS ZIP using local Electron runtime | `npm run electron:build:offline` |
+| Windows `.exe` installer and portable app | `npm run electron:build:win` |
 
 Build the Electron desktop package for the current platform:
 
 ```bash
 npm run electron:build
 ```
+
+On macOS, this produces:
+
+- App bundle: `dist/mac-arm64/LabelForge Studio.app`
+- ZIP package: `dist/LabelForge Studio-1.0.0-arm64-mac.zip`
 
 Build a macOS ZIP without downloading the Electron runtime:
 
@@ -87,6 +329,7 @@ The Windows build produces:
 
 - NSIS installer: `dist/LabelForge Studio Setup 1.0.0.exe`
 - Portable executable: `dist/LabelForge Studio 1.0.0.exe`
+- Unpacked app executable: `dist/win-unpacked/LabelForge Studio.exe`
 
 For best results, run the Windows build on a Windows machine. Cross-building Windows installers from macOS can require Wine.
 
