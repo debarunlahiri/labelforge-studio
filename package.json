@@ -33,6 +33,7 @@
       ]
     },
     "win": {
+      "artifactName": "${productName}-${version}-${arch}-${target}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -50,9 +51,11 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     }
   },
   "dependencies": {
