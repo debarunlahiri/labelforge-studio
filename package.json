@@ -6,11 +6,11 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/inject-polyfill.mjs",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "vite",
-    "electron:build": "vite build && node scripts/inject-polyfill.mjs && electron-builder",
+    "electron:build": "npm run build && electron-builder",
     "electron:build:mac:offline": "npm run build && electron-builder --mac zip --config.electronDist=./node_modules/electron/dist --config.electronVersion=42.4.0",
     "electron:build:offline": "npm run electron:build:mac:offline",
     "electron:build:win": "npm run build && electron-builder --win nsis portable --x64"
@@ -27,13 +27,18 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "dist-electron/sql-wasm.wasm",
+        "to": "sql-wasm.wasm"
+      }
+    ],
     "mac": {
       "target": [
         "zip"
       ]
     },
     "win": {
-      "artifactName": "${productName}-${version}-${arch}-${target}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -50,12 +55,18 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
+      "uninstallDisplayName": "LabelForge Studio",
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
     }
   },
   "dependencies": {

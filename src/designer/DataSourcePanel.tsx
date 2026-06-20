@@ -492,6 +492,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
   }
 
   const handleDelete = (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this data source?')) return
     onChange(dataSources.filter((ds) => ds.id !== id))
     if (expandedId === id) setExpandedId(null)
     if (editingId === id) setEditingId(null)
@@ -538,9 +539,9 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
   }
 
   return (
-    <div className="flex w-72 flex-col overflow-y-auto border-l border-[var(--border-color)] bg-white">
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border-color)] px-5">
-        <span className="text-xs font-semibold text-[var(--text-secondary)]">Data Sources</span>
+    <div className="designer-side-panel flex w-[clamp(300px,30vw,384px)] min-w-0 shrink-0 flex-col overflow-y-auto border-l border-[var(--border-color)] bg-slate-50">
+      <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-[var(--border-color)] bg-white px-4 py-3">
+        <span className="min-w-0 whitespace-normal break-words text-sm font-semibold text-slate-900">Data Sources</span>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
           className="flex h-7 w-7 items-center justify-center rounded-md text-sm text-[var(--color-primary)] transition-colors hover:bg-blue-50"

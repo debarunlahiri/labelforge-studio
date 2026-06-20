@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import PageHero from '../components/PageHero'
+import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
 
 const statusColors: Record<string, string> = {
   Pending: 'bg-yellow-100 text-yellow-700',
@@ -40,15 +42,21 @@ export default function PrintHistory() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Print History</h1>
+      <PageHero
+        eyebrow="Production activity"
+        title="Print History"
+        description="Review print jobs, statuses, retries, and recent production activity."
+        icon={faClockRotateLeft}
+        accent="amber"
+        actions={
         <button
           onClick={loadJobs}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+          className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
         >
           Refresh
         </button>
-      </div>
+        }
+      />
 
       <div className="rounded-xl border border-[var(--border-color)] bg-white shadow-sm">
         <div className="overflow-x-auto">

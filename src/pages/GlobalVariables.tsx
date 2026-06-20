@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import PageHero from '../components/PageHero'
+import { faCode } from '@fortawesome/free-solid-svg-icons'
 
 export default function GlobalVariables() {
   const [variables, setVariables] = useState<any[]>([])
@@ -45,15 +47,21 @@ export default function GlobalVariables() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Global Variables</h1>
+      <PageHero
+        eyebrow="Shared data"
+        title="Global Variables"
+        description="Manage reusable values available across designs and print workflows."
+        icon={faCode}
+        accent="violet"
+        actions={
         <button
           onClick={() => setShowCreateForm(true)}
-          className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)]"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
         >
           + Add Variable
         </button>
-      </div>
+        }
+      />
 
       {showCreateForm && (
         <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">

@@ -412,7 +412,7 @@ labelforge-studio/
 │   │   ├── AlignTools.tsx           # Alignment action buttons
 │   │   └── Ruler.tsx                # Konva ruler component (H/V)
 │   ├── hooks/
-│   │   └── useKeyboardShortcuts.ts  # Ctrl+Z, Ctrl+Shift+Z, Ctrl+S, Del, Ctrl+C/V/X/D, Ctrl+A
+│   │   └── useKeyboardShortcuts.ts  # Cross-platform Cmd/Ctrl designer shortcuts
 │   └── utils/
 │       └── labelRenderer.ts         # Canvas/PNG/PDF/ZPL rendering utilities
 ├── vite.config.ts
@@ -518,19 +518,27 @@ LabelForge Studio runs as an offline desktop application with no sign-in, regist
 
 ## Designer Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Z | Undo |
-| Ctrl+Shift+Z | Redo |
-| Ctrl+S | Save |
-| Delete | Delete selected object |
-| Ctrl+A | Select all objects |
-| Ctrl+C | Copy selected object |
-| Ctrl+V | Paste copied object |
-| Ctrl+X | Cut selected object |
-| Ctrl+D | Duplicate selected object |
-| Ctrl+= | Zoom in |
-| Ctrl+- | Zoom out |
+Keyboard shortcuts use the standard platform modifier:
+
+- macOS: `Command (⌘)`
+- Windows/Linux: `Ctrl`
+
+| Action | macOS | Windows/Linux |
+|--------|-------|---------------|
+| Save | `⌘+S` | `Ctrl+S` |
+| Save As | `⌘+Shift+S` | `Ctrl+Shift+S` |
+| Undo | `⌘+Z` | `Ctrl+Z` |
+| Redo | `⌘+Shift+Z` | `Ctrl+Shift+Z` or `Ctrl+Y` |
+| Select all objects | `⌘+A` | `Ctrl+A` |
+| Copy selected object | `⌘+C` | `Ctrl+C` |
+| Paste copied object | `⌘+V` | `Ctrl+V` |
+| Cut selected object | `⌘+X` | `Ctrl+X` |
+| Duplicate selected object | `⌘+D` | `Ctrl+D` |
+| Zoom in | `⌘+=` or `⌘++` | `Ctrl+=` or `Ctrl++` |
+| Zoom out | `⌘+-` | `Ctrl+-` |
+| Delete selected object | `Delete` or `Backspace` | `Delete` or `Backspace` |
+
+On the first manual save, LabelForge opens the native macOS or Windows Save dialog and suggests the `.lfx` extension. Each template remembers its own file location. Later saves update that file and create a database version in parallel.
 
 ## Designer Object Types
 

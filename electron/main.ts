@@ -25,6 +25,7 @@ function writeStartupLog(message: string, error?: unknown) {
 }
 
 function createWindow() {
+  let rendererReady = false
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -42,8 +43,35 @@ function createWindow() {
   })
 
   mainWindow.once('ready-to-show', () => {
+    rendererReady = true
     mainWindow?.show()
   })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    rendererReady = true
+    mainWindow?.show()
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    const message = `Renderer failed to load (${errorCode}): ${errorDescription}\n${validatedURL}`
+    writeStartupLog(message)
+    mainWindow?.show()
+    dialog.showErrorBox('LabelForge Studio could not open', message)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    const message = `Renderer process exited: ${details.reason} (exit code ${details.exitCode})`
+    writeStartupLog(message)
+    dialog.showErrorBox('LabelForge Studio stopped unexpectedly', message)
+  })
+
+  // Never leave users with an invisible process if ready-to-show is not emitted.
+  setTimeout(() => {
+    if (!rendererReady && mainWindow && !mainWindow.isDestroyed()) {
+      writeStartupLog('Renderer startup timed out; showing the window for diagnostics.')
+      mainWindow.show()
+    }
+  }, 10_000)
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)

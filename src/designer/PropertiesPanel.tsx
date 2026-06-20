@@ -22,37 +22,50 @@ import {
   faUnderline,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject } from '../types'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, ImageObject } from '../types'
 import { barcodeSymbologyGroups, qrSymbologyGroups } from './symbologies'
+import SearchableSelect from '../components/SearchableSelect'
+import { applyStyleRange, shiftRunsForTextChange, styleAt, type TextStyle } from './richText'
 
 interface PropertiesPanelProps {
   object: LabelObject
   onUpdate: (updates: Partial<LabelObject>) => void
   onDelete: () => void
+  textSelection?: { start: number; end: number }
+  onTextSelectionChange?: (selection: { start: number; end: number }) => void
 }
 
-const shapeTypes = ['rectangle', 'roundedRectangle', 'circle', 'ellipse', 'triangle']
+const shapeTypes = ['rectangle', 'roundedRectangle', 'circle', 'ellipse', 'triangle', 'polygon']
+const fontFamilies = [
+  'Arial', 'Arial Black', 'Arial Narrow', 'Avenir Next', 'Baskerville', 'Bookman',
+  'Calibri', 'Cambria', 'Candara', 'Century Gothic', 'Charter', 'Comic Sans MS',
+  'Copperplate', 'Courier New', 'Didot', 'Futura', 'Garamond', 'Geneva', 'Georgia',
+  'Gill Sans', 'Helvetica', 'Helvetica Neue', 'Hoefler Text', 'Impact', 'Inter',
+  'Lucida Grande', 'Menlo', 'Monaco', 'Montserrat', 'Noto Sans', 'Noto Serif',
+  'Optima', 'Palatino', 'Roboto', 'Rockwell', 'Segoe UI', 'Tahoma',
+  'Times New Roman', 'Trebuchet MS', 'Verdana',
+]
 
 const inputClass =
-  'h-8 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs text-slate-900 transition-colors focus:border-blue-400 focus:bg-white'
+  'h-9 w-full min-w-0 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs text-slate-900 transition-colors focus:border-blue-400 focus:bg-white'
 
-const labelClass = 'text-[10px] font-medium text-slate-500'
+const labelClass = 'mb-2 block text-[11px] font-semibold text-slate-700'
 
 function Section({ title, icon, children }: { title: string; icon: IconDefinition; children: React.ReactNode }) {
   return (
-    <section className="border-b border-slate-200 bg-white">
-      <div className="flex h-11 items-center gap-2 px-5">
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex h-11 items-center gap-2 border-b border-slate-200 px-5">
         <FontAwesomeIcon icon={icon} className="text-[11px] text-slate-400" fixedWidth />
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
       </div>
-      <div className="space-y-3.5 px-5 pb-5">{children}</div>
+      <div className="space-y-5 px-5 py-4">{children}</div>
     </section>
   )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1">
+    <label className="block min-w-0">
       <span className={labelClass}>{label}</span>
       {children}
     </label>
@@ -114,18 +127,22 @@ function ToggleButton({
   active,
   icon,
   label,
+  description,
+  tooltipAlign = 'left',
   onClick,
 }: {
   active: boolean
   icon: IconDefinition
   label: string
+  description: string
+  tooltipAlign?: 'left' | 'right'
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-8 flex-1 items-center justify-center gap-2 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+      className={`group relative flex h-8 flex-1 items-center justify-center gap-2 rounded-md border px-2.5 text-xs font-medium transition-colors ${
         active
           ? 'border-blue-200 bg-blue-50 text-blue-700'
           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -133,6 +150,7 @@ function ToggleButton({
     >
       <FontAwesomeIcon icon={icon} />
       {label}
+      <PropertyTooltip label={label} description={description} align={tooltipAlign} />
     </button>
   )
 }
@@ -140,24 +158,52 @@ function ToggleButton({
 function FormatButton({
   active,
   children,
+  label,
+  description,
+  tooltipAlign = 'left',
   onClick,
 }: {
   active: boolean
   children: React.ReactNode
+  label: string
+  description: string
+  tooltipAlign?: 'left' | 'right'
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-8 min-w-9 items-center justify-center rounded-md border text-xs transition-colors ${
+      className={`group relative flex h-8 min-w-9 items-center justify-center rounded-md border text-xs transition-colors ${
         active
           ? 'border-blue-200 bg-blue-50 text-blue-700'
           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
       }`}
     >
       {children}
+      <PropertyTooltip label={label} description={description} align={tooltipAlign} />
     </button>
+  )
+}
+
+function PropertyTooltip({
+  label,
+  description,
+  align = 'left',
+}: {
+  label: string
+  description: string
+  align?: 'left' | 'right'
+}) {
+  return (
+    <span
+      className={`pointer-events-none absolute top-full z-50 mt-2 hidden w-44 rounded-md bg-slate-900 px-3 py-2 text-left text-white shadow-xl group-hover:block ${
+        align === 'right' ? 'right-0' : 'left-0'
+      }`}
+    >
+      <span className="block text-[11px] font-semibold">{label}</span>
+      <span className="mt-0.5 block text-[10px] font-normal leading-4 text-slate-300">{description}</span>
+    </span>
   )
 }
 
@@ -197,6 +243,33 @@ function getObjectIcon(type: LabelObject['type']) {
   return faLayerGroup
 }
 
+function formatItemType(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, (character) => character.toUpperCase())
+}
+
+function getItemTypeName(object: LabelObject) {
+  if (object.type === 'shape') {
+    return formatItemType((object as ShapeObject).shapeType || 'Shape')
+  }
+
+  const names: Record<LabelObject['type'], string> = {
+    text: 'Text',
+    barcode: 'Barcode',
+    qrcode: 'QR Code',
+    image: 'Image',
+    shape: 'Shape',
+    line: 'Line',
+    datetime: 'Date & Time',
+    counter: 'Counter',
+    database: 'Database Field',
+    rfid: 'RFID',
+  }
+
+  return names[object.type]
+}
+
 function SymbologySelect({
   value,
   groups,
@@ -225,34 +298,39 @@ function SymbologySelect({
   )
 }
 
-export default function PropertiesPanel({ object, onUpdate, onDelete }: PropertiesPanelProps) {
+export default function PropertiesPanel({ object, onUpdate, onDelete, textSelection: externalTextSelection, onTextSelectionChange }: PropertiesPanelProps) {
+  const [localTextSelection, setLocalTextSelection] = useState({ start: 0, end: 0 })
+  const textSelection = externalTextSelection ?? localTextSelection
+  const setTextSelection = onTextSelectionChange ?? setLocalTextSelection
   const handleChange = (key: string, value: any) => {
     onUpdate({ [key]: value } as any)
   }
+  const itemTypeName = getItemTypeName(object)
+  const itemName = object.name?.trim() || itemTypeName
+  const updateTextStyle = (text: TextObject, updates: Partial<TextStyle>) => {
+    if (textSelection.start !== textSelection.end) {
+      onUpdate({ styleRuns: applyStyleRange(text, textSelection.start, textSelection.end, updates) } as Partial<TextObject>)
+    } else {
+      onUpdate(updates as Partial<TextObject>)
+    }
+  }
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-[var(--border-color)] bg-white">
-      <div className="flex h-[64px] shrink-0 items-center justify-between border-b border-[var(--border-color)] bg-white px-5">
-        <div className="flex min-w-0 items-center gap-3">
+    <aside className="designer-side-panel flex w-[380px] min-w-0 shrink-0 flex-col border-l border-[var(--border-color)] bg-slate-50">
+      <div className="flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-[var(--border-color)] bg-white px-5 py-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-blue-700">
             <FontAwesomeIcon icon={getObjectIcon(object.type)} />
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-900">{object.name || 'Properties'}</div>
-            <div className="truncate text-[11px] capitalize text-slate-500">{object.type} object</div>
+          <div className="min-w-0 flex-1">
+            <div className="whitespace-normal break-words text-sm font-semibold leading-5 text-slate-900">{itemName}</div>
+            <div className="whitespace-normal break-words text-[11px] leading-4 text-slate-600">{itemTypeName}</div>
           </div>
         </div>
-        <button
-          onClick={onDelete}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-          title="Delete object"
-        >
-          <FontAwesomeIcon icon={faTrash} />
-        </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <Section title="Object" icon={faGear}>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
+        <Section title={itemName} icon={faGear}>
           <Field label="Name">
             <input
               type="text"
@@ -262,31 +340,34 @@ export default function PropertiesPanel({ object, onUpdate, onDelete }: Properti
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
             <ToggleButton
               active={object.visible}
               icon={object.visible ? faEye : faEyeSlash}
               label={object.visible ? 'Visible' : 'Hidden'}
+              description={`Show or hide ${itemName} on the label.`}
               onClick={() => handleChange('visible', !object.visible)}
             />
             <ToggleButton
               active={object.locked}
               icon={object.locked ? faLock : faLockOpen}
               label={object.locked ? 'Locked' : 'Unlocked'}
+              description={`Lock ${itemName} to prevent accidental movement or resizing.`}
+              tooltipAlign="right"
               onClick={() => handleChange('locked', !object.locked)}
             />
           </div>
         </Section>
 
         <Section title="Transform" icon={faRulerCombined}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
             <CompactNumberField label="X" value={object.x} step={0.1} onChange={(value) => handleChange('x', value)} />
             <CompactNumberField label="Y" value={object.y} step={0.1} onChange={(value) => handleChange('y', value)} />
             <CompactNumberField label="W" value={object.width} step={0.1} onChange={(value) => handleChange('width', value)} />
             <CompactNumberField label="H" value={object.height} step={0.1} onChange={(value) => handleChange('height', value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
             <CompactNumberField label="R" value={object.rotation} step={1} onChange={(value) => handleChange('rotation', value)} />
             <Field label="Opacity">
               <div className="flex h-7 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2">
@@ -312,51 +393,54 @@ export default function PropertiesPanel({ object, onUpdate, onDelete }: Properti
               <Field label="Content">
                 <textarea
                   value={textObj.value}
-                  onChange={(e) => handleChange('value', e.target.value)}
+                  onSelect={(event) => setTextSelection({
+                    start: event.currentTarget.selectionStart,
+                    end: event.currentTarget.selectionEnd,
+                  })}
+                  onChange={(e) => onUpdate({
+                    value: e.target.value,
+                    styleRuns: shiftRunsForTextChange(textObj.styleRuns, textObj.value, e.target.value),
+                  } as Partial<TextObject>)}
                   className={`${inputClass} h-14 resize-none py-2`}
                 />
               </Field>
 
-              <div className="grid grid-cols-[1fr_72px] gap-2">
+              <div className="designer-panel-grid grid min-w-0 grid-cols-[minmax(0,1fr)_88px] gap-4">
                 <Field label="Font">
-                  <select
+                  <SearchableSelect
                     value={textObj.fontFamily}
-                    onChange={(e) => handleChange('fontFamily', e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="Arial">Arial</option>
-                    <option value="Helvetica">Helvetica</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Courier New">Courier New</option>
-                    <option value="Verdana">Verdana</option>
-                  </select>
+                    onChange={(value) => updateTextStyle(textObj, { fontFamily: value })}
+                    placeholder="Select font..."
+                    searchPlaceholder="Search fonts..."
+                    options={fontFamilies.map((font) => ({ value: font, label: font }))}
+                  />
                 </Field>
-                <NumberField label="Size" value={textObj.fontSize || 14} onChange={(value) => handleChange('fontSize', value)} />
+                <NumberField label="Size" value={textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).fontSize : textObj.fontSize || 14} onChange={(value) => updateTextStyle(textObj, { fontSize: value })} />
               </div>
 
               <div className="flex gap-2">
-                <FormatButton active={textObj.bold} onClick={() => handleChange('bold', !textObj.bold)}>
+                <FormatButton active={textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).bold : textObj.bold} label="Bold" description="Toggle bold styling for the selected text." onClick={() => updateTextStyle(textObj, { bold: !(textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).bold : textObj.bold) })}>
                   <FontAwesomeIcon icon={faBold} />
                 </FormatButton>
-                <FormatButton active={textObj.italic} onClick={() => handleChange('italic', !textObj.italic)}>
+                <FormatButton active={textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).italic : textObj.italic} label="Italic" description="Toggle italic styling for the selected text." onClick={() => updateTextStyle(textObj, { italic: !(textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).italic : textObj.italic) })}>
                   <FontAwesomeIcon icon={faItalic} />
                 </FormatButton>
-                <FormatButton active={textObj.underline} onClick={() => handleChange('underline', !textObj.underline)}>
+                <FormatButton active={textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).underline : textObj.underline} label="Underline" description="Toggle underline styling for the selected text." tooltipAlign="right" onClick={() => updateTextStyle(textObj, { underline: !(textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).underline : textObj.underline) })}>
                   <FontAwesomeIcon icon={faUnderline} />
                 </FormatButton>
               </div>
 
-              <ColorField label="Text color" value={textObj.textColor} onChange={(value) => handleChange('textColor', value)} />
+              <ColorField label="Text color" value={textSelection.start !== textSelection.end ? styleAt(textObj, textSelection.start).textColor : textObj.textColor} onChange={(value) => updateTextStyle(textObj, { textColor: value })} />
 
               <Field label="Alignment">
                 <div className="grid grid-cols-3 gap-2">
-                  <FormatButton active={textObj.horizontalAlign === 'left'} onClick={() => handleChange('horizontalAlign', 'left')}>
+                  <FormatButton active={textObj.horizontalAlign === 'left'} label="Align Left" description="Align text to the left side of the item." onClick={() => handleChange('horizontalAlign', 'left')}>
                     <FontAwesomeIcon icon={faAlignLeft} />
                   </FormatButton>
-                  <FormatButton active={textObj.horizontalAlign === 'center'} onClick={() => handleChange('horizontalAlign', 'center')}>
+                  <FormatButton active={textObj.horizontalAlign === 'center'} label="Align Center" description="Center text horizontally inside the item." onClick={() => handleChange('horizontalAlign', 'center')}>
                     <FontAwesomeIcon icon={faAlignCenter} />
                   </FormatButton>
-                  <FormatButton active={textObj.horizontalAlign === 'right'} onClick={() => handleChange('horizontalAlign', 'right')}>
+                  <FormatButton active={textObj.horizontalAlign === 'right'} label="Align Right" description="Align text to the right side of the item." tooltipAlign="right" onClick={() => handleChange('horizontalAlign', 'right')}>
                     <FontAwesomeIcon icon={faAlignRight} />
                   </FormatButton>
                 </div>
@@ -390,6 +474,7 @@ export default function PropertiesPanel({ object, onUpdate, onDelete }: Properti
                 active={bcObj.showHumanReadable}
                 icon={faBarcode}
                 label="Human-readable text"
+                description="Show or hide the barcode value beneath the bars."
                 onClick={() => handleChange('showHumanReadable', !bcObj.showHumanReadable)}
               />
             </Section>
@@ -443,14 +528,14 @@ export default function PropertiesPanel({ object, onUpdate, onDelete }: Properti
                   onChange={(e) => handleChange('shapeType', e.target.value)}
                   className={inputClass}
                 >
-                  {shapeTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  {shapeTypes.map((type) => <option key={type} value={type}>{formatItemType(type)}</option>)}
                 </select>
               </Field>
 
               <ColorField label="Fill" value={shapeObj.fillColor} onChange={(value) => handleChange('fillColor', value)} />
               <ColorField label="Border" value={shapeObj.borderColor} onChange={(value) => handleChange('borderColor', value)} />
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
                 <NumberField label="Border width" value={shapeObj.borderWidth} onChange={(value) => handleChange('borderWidth', value)} />
                 <NumberField label="Radius" value={shapeObj.cornerRadius} onChange={(value) => handleChange('cornerRadius', value)} />
               </div>
@@ -467,25 +552,108 @@ export default function PropertiesPanel({ object, onUpdate, onDelete }: Properti
 
         {(object.type === 'image') && (
           <Section title="Image" icon={faFillDrip}>
+            {(() => {
+              const image = object as ImageObject
+              return <>
+            <Field label="Image source">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const source = String(reader.result || '')
+                    const probe = new window.Image()
+                    probe.onload = () => {
+                      const image = object as ImageObject
+                      const updates: Partial<ImageObject> = { source, sourceType: 'embedded' }
+                      if (image.maintainAspectRatio && probe.naturalWidth && probe.naturalHeight) {
+                        updates.height = image.width * (probe.naturalHeight / probe.naturalWidth)
+                      }
+                      onUpdate(updates)
+                    }
+                    probe.src = source
+                  }
+                  reader.readAsDataURL(file)
+                  event.target.value = ''
+                }}
+              />
+            </Field>
+            <Field label="Or image URL">
+              <input
+                type="url"
+                value={(object as ImageObject).sourceType === 'url' ? (object as ImageObject).source : ''}
+                onChange={(event) => onUpdate({ source: event.target.value, sourceType: 'url' } as Partial<ImageObject>)}
+                className={inputClass}
+                placeholder="https://example.com/image.png"
+              />
+            </Field>
+            <Field label="Fit and crop">
+              <select
+                value={image.fitMode || 'contain'}
+                onChange={(event) => onUpdate({
+                  fitMode: event.target.value as ImageObject['fitMode'],
+                  maintainAspectRatio: event.target.value !== 'stretch',
+                } as Partial<ImageObject>)}
+                className={inputClass}
+              >
+                <option value="contain">Fit entire image</option>
+                <option value="cover">Fill frame and crop</option>
+                <option value="stretch">Stretch to frame</option>
+              </select>
+            </Field>
+            {(image.fitMode || 'contain') === 'cover' && (
+              <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <Field label={`Horizontal crop focus: ${Math.round(image.cropX ?? 50)}%`}>
+                  <input type="range" min={0} max={100} value={image.cropX ?? 50} onChange={(event) => handleChange('cropX', Number(event.target.value))} className="w-full" />
+                </Field>
+                <Field label={`Vertical crop focus: ${Math.round(image.cropY ?? 50)}%`}>
+                  <input type="range" min={0} max={100} value={image.cropY ?? 50} onChange={(event) => handleChange('cropY', Number(event.target.value))} className="w-full" />
+                </Field>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => onUpdate({ width: Math.min(image.width, image.height), height: Math.max(image.width, image.height) })} className="h-9 rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50">Portrait</button>
+              <button type="button" onClick={() => onUpdate({ width: Math.max(image.width, image.height), height: Math.min(image.width, image.height) })} className="h-9 rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50">Landscape</button>
+              <button type="button" onClick={() => handleChange('flipHorizontal', !image.flipHorizontal)} className={`h-9 rounded-md border text-xs font-semibold ${image.flipHorizontal ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}>Flip horizontal</button>
+              <button type="button" onClick={() => handleChange('flipVertical', !image.flipVertical)} className={`h-9 rounded-md border text-xs font-semibold ${image.flipVertical ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}>Flip vertical</button>
+            </div>
+            <button type="button" onClick={() => onUpdate({ fitMode: 'contain', cropX: 50, cropY: 50, flipHorizontal: false, flipVertical: false, rotation: 0 } as Partial<ImageObject>)} className="h-9 w-full rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50">Reset image adjustments</button>
             <ToggleButton
               active={(object as any).maintainAspectRatio ?? true}
               icon={faLock}
               label="Maintain aspect ratio"
+              description="Keep the image proportions unchanged while resizing."
               onClick={() => handleChange('maintainAspectRatio', !((object as any).maintainAspectRatio ?? true))}
             />
+            {(object as ImageObject).source && (
+              <button
+                type="button"
+                onClick={() => onUpdate({ source: '', sourceType: 'embedded' } as Partial<ImageObject>)}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Remove image
+              </button>
+            )}
+              </>
+            })()}
           </Section>
         )}
 
-        <div className="p-4">
+        <div>
           <button
             onClick={onDelete}
             className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
           >
             <FontAwesomeIcon icon={faTrash} />
-            Delete Object
+            Delete {itemName}
           </button>
         </div>
       </div>
     </aside>
   )
 }
+import { useState } from 'react'

@@ -18,6 +18,7 @@ interface DesignerState {
   canRedo: boolean
   addObject: (obj: LabelObject) => void
   updateObject: (id: string, updates: Partial<LabelObject>) => void
+  moveObjects: (ids: string[], deltaX: number, deltaY: number) => void
   deleteObject: (id: string) => void
   selectObject: (id: string | null) => void
   selectObjects: (ids: string[]) => void
@@ -26,11 +27,16 @@ interface DesignerState {
   setZoom: (zoom: number) => void
   toggleGrid: () => void
   toggleSnap: () => void
+  setGridVisible: (visible: boolean) => void
+  setSnapToGrid: (enabled: boolean) => void
+  setGridSize: (size: number) => void
   setCanvasSize: (width: number, height: number) => void
   clipboard: LabelObject | null
   copyObject: () => void
   pasteObject: () => void
   duplicateObject: () => void
+  groupSelectedObjects: () => void
+  ungroupObjects: (groupId: string) => void
   reorderObjects: (objects: LabelObject[]) => void
   clearObjects: () => void
   loadObjects: (objects: LabelObject[]) => void
@@ -74,6 +80,18 @@ export const useDesignerStore = create<DesignerState>((set) => ({
         state,
         state.objects.map((obj) =>
           obj.id === id ? { ...obj, ...updates } : obj
+        )
+      )
+    ),
+
+  moveObjects: (ids, deltaX, deltaY) =>
+    set((state) =>
+      pushToHistory(
+        state,
+        state.objects.map((object) =>
+          ids.includes(object.id)
+            ? { ...object, x: object.x + deltaX, y: object.y + deltaY }
+            : object
         )
       )
     ),
@@ -122,6 +140,34 @@ export const useDesignerStore = create<DesignerState>((set) => ({
       return pushToHistory(state, [...state.objects, newObj])
     }),
 
+  groupSelectedObjects: () =>
+    set((state) => {
+      if (state.selectedObjectIds.length < 2) return state
+      const groupId = uuidv4()
+      const existingGroups = new Set(state.objects.map((object) => object.groupId).filter(Boolean))
+      const groupName = `Group ${existingGroups.size + 1}`
+      return pushToHistory(
+        state,
+        state.objects.map((object) =>
+          state.selectedObjectIds.includes(object.id)
+            ? { ...object, groupId, groupName }
+            : object
+        )
+      )
+    }),
+
+  ungroupObjects: (groupId) =>
+    set((state) =>
+      pushToHistory(
+        state,
+        state.objects.map((object) =>
+          object.groupId === groupId
+            ? { ...object, groupId: undefined, groupName: undefined }
+            : object
+        )
+      )
+    ),
+
   selectObject: (id) => set({ selectedObjectId: id, selectedObjectIds: id ? [id] : [] }),
 
   selectObjects: (ids) => set({ selectedObjectIds: ids, selectedObjectId: ids.length > 0 ? ids[0] : null }),
@@ -151,6 +197,12 @@ export const useDesignerStore = create<DesignerState>((set) => ({
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
 
   toggleSnap: () => set((state) => ({ snapToGrid: !state.snapToGrid })),
+
+  setGridVisible: (visible) => set({ showGrid: visible }),
+
+  setSnapToGrid: (enabled) => set({ snapToGrid: enabled }),
+
+  setGridSize: (size) => set({ gridSize: Math.max(1, Math.min(100, size)) }),
 
   setCanvasSize: (width, height) => set({ canvasWidth: width, canvasHeight: height }),
 

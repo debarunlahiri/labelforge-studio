@@ -53,6 +53,8 @@ export interface LabelObject {
   visible: boolean
   locked: boolean
   opacity: number
+  groupId?: string
+  groupName?: string
   data_source_binding?: string
   print_condition?: string
 }
@@ -73,6 +75,18 @@ export interface TextObject extends LabelObject {
   letterSpacing: number
   wordWrap: boolean
   autoShrink: boolean
+  styleRuns?: TextStyleRun[]
+}
+
+export interface TextStyleRun {
+  start: number
+  end: number
+  fontFamily?: string
+  fontSize?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  textColor?: string
 }
 
 export interface BarcodeObject extends LabelObject {
@@ -103,6 +117,11 @@ export interface ImageObject extends LabelObject {
   source: string
   sourceType: 'embedded' | 'file' | 'database' | 'url'
   maintainAspectRatio: boolean
+  fitMode?: 'contain' | 'cover' | 'stretch'
+  cropX?: number
+  cropY?: number
+  flipHorizontal?: boolean
+  flipVertical?: boolean
 }
 
 export interface ShapeObject extends LabelObject {

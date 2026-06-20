@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PrintTimeInput from './PrintTimeInput'
+import SearchableSelect from '../components/SearchableSelect'
+import PageHero from '../components/PageHero'
+import { faPrint } from '@fortawesome/free-solid-svg-icons'
 
 interface PrintJob {
   id: string
@@ -46,7 +49,7 @@ export default function PrintScreen() {
   const loadData = async () => {
     try {
       const t = await window.electronAPI?.templates.list() || []
-      setTemplates(t.filter((tmpl: any) => tmpl.status === 'Approved'))
+      setTemplates(t)
       const p = await window.electronAPI?.printers.list() || []
       setPrinters(p)
     } catch {}
@@ -70,9 +73,12 @@ export default function PrintScreen() {
     setIsPrinting(true)
     try {
       const template = templates.find((t: any) => t.id === selectedTemplate)
+      const templateVersions = await window.electronAPI?.templateVersions.list(selectedTemplate) || []
+      const versionId = template?.current_version_id || templateVersions[0]?.id
+      if (!versionId) throw new Error('Save this design once before printing')
       const result = await window.electronAPI?.printJobs.create({
         template_id: selectedTemplate,
-        template_version_id: template?.current_version_id,
+        template_version_id: versionId,
         printer_id: selectedPrinter,
         requested_by: 'current_user',
         copies,
@@ -100,13 +106,19 @@ export default function PrintScreen() {
   return (
     <>
       <div className="mx-auto max-w-3xl space-y-6">
-        <h1 className="text-2xl font-bold">Print Labels</h1>
+        <PageHero
+          eyebrow="Production workflow"
+          title="Print Labels"
+          description="Select a design, choose a printer, and prepare the next production job."
+          icon={faPrint}
+          accent="emerald"
+        />
 
         <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Select Template</h2>
           {templates.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
-              No approved templates available. Please create and approve a template first.
+              No designs available. Please create a design first.
             </div>
           ) : (
             <select
@@ -140,18 +152,17 @@ export default function PrintScreen() {
               No printers available. Please register a printer first.
             </div>
           ) : (
-            <select
+            <SearchableSelect
               value={selectedPrinter}
-              onChange={(e) => setSelectedPrinter(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="">Select a printer...</option>
-              {printers.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.printer_type || 'Unknown'} - {p.connection_type || 'driver'} - {p.status})
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedPrinter}
+              placeholder="Select a printer..."
+              searchPlaceholder="Search registered printers..."
+              options={printers.map((printer: any) => ({
+                value: printer.id,
+                label: printer.name,
+                description: `${printer.printer_type || 'Unknown'} · ${printer.connection_type || 'driver'} · ${printer.status}`,
+              }))}
+            />
           )}
         </div>
 

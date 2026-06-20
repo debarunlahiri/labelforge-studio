@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Stage, Layer, Rect, Text, Line, Group, Transformer, useStrictMode as setKonvaStrictMode } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, DataSourceConfig } from '../types'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject, DataSourceConfig, Template, TemplateCanvas } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import PropertiesPanel from '../designer/PropertiesPanel'
 import LayersPanel from '../designer/LayersPanel'
@@ -12,18 +12,19 @@ import DataSourcePanel from '../designer/DataSourcePanel'
 import ArtboardPanel from '../designer/ArtboardPanel'
 import Ruler from '../designer/Ruler'
 import BarcodeRenderer from '../designer/BarcodeRenderer'
+import ImageRenderer from '../designer/ImageRenderer'
+import ShapeRenderer from '../designer/ShapeRenderer'
+import RichTextRenderer from '../designer/RichTextRenderer'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import {
-  faArrowDown,
-  faArrowUp,
-  faClone,
-  faCopy,
-  faLayerGroup,
-  faPaste,
-  faTrash,
-} from '@fortawesome/free-solid-svg-icons'
-import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import NewTemplateWizard from './template-designer/NewTemplateWizard'
+import ObjectContextMenu, { type ImageContextAction } from './template-designer/ObjectContextMenu'
+import DesignerStatusBar from './template-designer/DesignerStatusBar'
+import type {
+  AutoSaveStatus,
+  DesignerContextMenuState,
+  NewTemplateData,
+} from './template-designer/types'
+import { useConfirm } from '../hooks/useConfirm'
 
 const UNIT_TO_PX: Record<string, number> = {
   mm: 3.78,
@@ -47,17 +48,9 @@ type Bounds = {
   height: number
 }
 
-type ContextMenuState = {
-  x: number
-  y: number
+type InlineTextEditorState = {
   objectId: string
-} | null
-
-type ContextMenuItemProps = {
-  icon: IconDefinition
-  label: string
-  onClick: () => void
-  danger?: boolean
+  value: string
 }
 
 const SNAP_TOLERANCE = 6
@@ -74,44 +67,30 @@ function clampZoom(value: number): number {
 // position until drag end and make objects appear to jump back.
 setKonvaStrictMode(false)
 
-function ContextMenuItem({ icon, label, onClick, danger = false }: ContextMenuItemProps) {
-  return (
-    <button
-      type="button"
-      className={`flex h-8 w-full items-center gap-3 px-3 text-left text-xs font-medium transition-colors ${
-        danger
-          ? 'text-red-600 hover:bg-red-50'
-          : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700'
-      }`}
-      onClick={onClick}
-    >
-      <span className={`flex w-4 justify-center ${danger ? 'text-red-500' : 'text-slate-400'}`}>
-        <FontAwesomeIcon icon={icon} fixedWidth />
-      </span>
-      <span className="flex-1">{label}</span>
-    </button>
-  )
-}
-
 function mmToPx(mm: number, unit: string = 'mm', dpi: number = 300): number {
   const factor = UNIT_TO_PX[unit] || 3.78
   return mm * factor * (dpi / 300)
 }
 
 export default function TemplateDesigner() {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const { id } = useParams()
   const navigate = useNavigate()
-  const { currentTemplate, loadTemplate, createTemplate, updateTemplate, saveVersion, loadVersions, versions } = useTemplateStore()
+  const {
+    currentTemplate, loadTemplate, createTemplate, updateTemplate, saveVersion, loadVersions,
+    versions, clearCurrentTemplate,
+  } = useTemplateStore()
   const {
     objects, selectedObjectId, selectedObjectIds, zoom, showGrid, snapToGrid, gridSize,
-    addObject, updateObject, deleteObject, selectObject, selectObjects, toggleObjectSelection, deleteSelectedObjects, setZoom, toggleGrid, toggleSnap,
+    addObject, updateObject, moveObjects, deleteObject, selectObject, selectObjects, toggleObjectSelection, deleteSelectedObjects, setZoom, toggleGrid, toggleSnap,
+    setGridVisible, setSnapToGrid, setGridSize,
     clearObjects, loadObjects, canvasWidth, canvasHeight, setCanvasSize,
     undo, redo, canUndo, canRedo,
-    copyObject, pasteObject, duplicateObject, reorderObjects,
+    copyObject, pasteObject, duplicateObject, reorderObjects, groupSelectedObjects, ungroupObjects,
   } = useDesignerStore()
 
   const [showNewWizard, setShowNewWizard] = useState(!id)
-  const [wizardData, setWizardData] = useState({
+  const [wizardData, setWizardData] = useState<NewTemplateData>({
     name: '',
     description: '',
     label_width: 100,
@@ -136,18 +115,112 @@ export default function TemplateDesigner() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
   const [autoSaveIntervalMs, setAutoSaveIntervalMs] = useState(30000)
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle')
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle')
   const [smartGuides, setSmartGuides] = useState<SmartGuide[]>([])
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
+  const [contextMenu, setContextMenu] = useState<DesignerContextMenuState>(null)
   const [layerFlashObjectId, setLayerFlashObjectId] = useState<string | null>(null)
+  const [workspaceScroll, setWorkspaceScroll] = useState({ left: 0, top: 0 })
+  const [rulerOffset, setRulerOffset] = useState({ x: 0, y: 0 })
+  const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
+  const [inlineTextEditor, setInlineTextEditor] = useState<InlineTextEditorState | null>(null)
+  const [textSelection, setTextSelection] = useState({ start: 0, end: 0 })
+  const [documentFilePath, setDocumentFilePath] = useState<string | null>(null)
   const stageRef = useRef<any>(null)
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
+  const artboardRef = useRef<HTMLDivElement | null>(null)
+  const inlineTextAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const transformerRef = useRef<any>(null)
   const autoSaveTimerRef = useRef<any>(null)
   const lastSavedHashRef = useRef<string>('')
   const hasLoadedVersionRef = useRef(false)
   const autoSaveInFlightRef = useRef(false)
   const layerFlashTimerRef = useRef<any>(null)
+  const documentFilePathRef = useRef<string | null>(null)
+  const leaveSaveRef = useRef<{
+    templateId: string | null
+    template: Template | null
+    canvasData: TemplateCanvas | null
+    canvasHash: string
+    filePath: string | null
+  }>({
+    templateId: null,
+    template: null,
+    canvasData: null,
+    canvasHash: '',
+    filePath: null,
+  })
+  const multiDragRef = useRef<{
+    anchorId: string
+    startX: number
+    startY: number
+    objectIds: string[]
+  } | null>(null)
   const getNodeId = (id: string) => `object-${id}`
+  const getTemplateFilePathSettingKey = (templateId: string) => `template_file_path_${templateId}`
+
+  useEffect(() => {
+    if (!inlineTextEditor) return
+    requestAnimationFrame(() => {
+      inlineTextAreaRef.current?.focus()
+      inlineTextAreaRef.current?.select()
+      const length = inlineTextAreaRef.current?.value.length || 0
+      setTextSelection({ start: 0, end: length })
+    })
+  }, [inlineTextEditor?.objectId])
+
+  const finishInlineTextEdit = useCallback((save: boolean) => {
+    if (!inlineTextEditor) return
+    if (save) {
+      updateObject(inlineTextEditor.objectId, { value: inlineTextEditor.value } as Partial<LabelObject>)
+    }
+    setInlineTextEditor(null)
+  }, [inlineTextEditor, updateObject])
+
+  useEffect(() => {
+    const workspace = workspaceRef.current
+    if (!workspace) return
+
+    const handleModifierWheel = (event: WheelEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return
+      event.preventDefault()
+      const direction = event.deltaY < 0 ? 1 : -1
+      const currentZoom = useDesignerStore.getState().zoom
+      setZoom(clampZoom(currentZoom + direction * ZOOM_STEP))
+    }
+
+    const updateWorkspaceSize = () => {
+      setWorkspaceSize({
+        width: workspace.clientWidth,
+        height: workspace.clientHeight,
+      })
+    }
+
+    updateWorkspaceSize()
+    const observer = new ResizeObserver(updateWorkspaceSize)
+    observer.observe(workspace)
+    workspace.addEventListener('wheel', handleModifierWheel, { passive: false })
+    return () => {
+      observer.disconnect()
+      workspace.removeEventListener('wheel', handleModifierWheel)
+    }
+  }, [setZoom])
+
+  const updateRulerOffset = useCallback(() => {
+    const workspace = workspaceRef.current
+    const artboard = artboardRef.current
+    if (!workspace || !artboard) return
+    const workspaceRect = workspace.getBoundingClientRect()
+    const artboardRect = artboard.getBoundingClientRect()
+    setRulerOffset({
+      x: 24 - (artboardRect.left - workspaceRect.left),
+      y: 24 - (artboardRect.top - workspaceRect.top),
+    })
+  }, [])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(updateRulerOffset)
+    return () => cancelAnimationFrame(frame)
+  }, [canvasHeight, canvasWidth, updateRulerOffset, workspaceScroll, workspaceSize, zoom])
 
   const setClampedZoom = useCallback((value: number) => {
     setZoom(clampZoom(value))
@@ -161,14 +234,14 @@ export default function TemplateDesigner() {
     setClampedZoom(zoom - ZOOM_STEP)
   }, [setClampedZoom, zoom])
 
-  const zoomToActual = useCallback(() => {
-    setClampedZoom(1)
-  }, [setClampedZoom])
-
   const zoomToFit = useCallback(() => {
-    const maxW = 900
-    const maxH = 650
-    setClampedZoom(Math.min(maxW / canvasWidth, maxH / canvasHeight, 1))
+    const workspace = workspaceRef.current
+    if (!workspace || canvasWidth <= 0 || canvasHeight <= 0) return
+    const horizontalPadding = 120
+    const verticalPadding = 120
+    const availableWidth = Math.max(120, workspace.clientWidth - horizontalPadding)
+    const availableHeight = Math.max(120, workspace.clientHeight - verticalPadding)
+    setClampedZoom(Math.min(availableWidth / canvasWidth, availableHeight / canvasHeight, 1))
   }, [canvasHeight, canvasWidth, setClampedZoom])
 
   const buildCanvasData = useCallback(() => ({
@@ -180,13 +253,60 @@ export default function TemplateDesigner() {
     dataSources,
     printSettings: {
       copies: 1,
-      printerLanguage: 'pdf',
+      printerLanguage: 'pdf' as const,
     },
   }), [canvasWidth, canvasHeight, currentTemplate, dataSources, objects, wizardData.dpi, wizardData.unit])
 
   const getCanvasHash = useCallback((canvasData = buildCanvasData()) => {
     return JSON.stringify(canvasData)
   }, [buildCanvasData])
+
+  useEffect(() => {
+    const canvasData = buildCanvasData()
+    leaveSaveRef.current = {
+      templateId: currentTemplate?.id || null,
+      template: currentTemplate || null,
+      canvasData,
+      canvasHash: getCanvasHash(canvasData),
+      filePath: documentFilePathRef.current,
+    }
+  }, [buildCanvasData, currentTemplate?.id, getCanvasHash])
+
+  useEffect(() => {
+    return () => {
+      const pending = leaveSaveRef.current
+      if (
+        !pending.templateId ||
+        !pending.canvasData ||
+        pending.canvasHash === lastSavedHashRef.current
+      ) {
+        return
+      }
+
+      const databaseSave = saveVersion(pending.templateId, {
+        template_json: JSON.stringify(pending.canvasData),
+        change_comment: 'Saved when leaving designer',
+      })
+
+      const fileSave = pending.filePath && pending.template
+        ? window.electronAPI?.app.saveFile({
+            title: 'Save LabelForge Template',
+            filePath: pending.filePath,
+            showDialog: false,
+            extension: '.lfx',
+            content: JSON.stringify({
+              format: 'labelforge-template',
+              formatVersion: 1,
+              savedAt: new Date().toISOString(),
+              template: pending.template,
+              canvas: pending.canvasData,
+            }, null, 2),
+          })
+        : Promise.resolve(null)
+
+      void Promise.allSettled([databaseSave, fileSave])
+    }
+  }, [saveVersion])
 
   const loadAutoSaveSettings = useCallback(async () => {
     try {
@@ -195,22 +315,49 @@ export default function TemplateDesigner() {
       const intervalSeconds = Math.max(5, Math.min(600, Number(settings?.auto_save_interval_seconds || 30)))
       setAutoSaveEnabled(enabled)
       setAutoSaveIntervalMs(intervalSeconds * 1000)
+      setGridVisible(settings?.designer_show_grid !== 'false')
+      setSnapToGrid(settings?.designer_snap_to_grid !== 'false')
+      setGridSize(Number(settings?.designer_grid_size || 10))
     } catch {
       setAutoSaveEnabled(true)
       setAutoSaveIntervalMs(30000)
     }
-  }, [])
+  }, [setGridSize, setGridVisible, setSnapToGrid])
 
   useEffect(() => {
     if (id) {
+      setShowNewWizard(false)
+      documentFilePathRef.current = null
+      setDocumentFilePath(null)
       hasLoadedVersionRef.current = false
       lastSavedHashRef.current = ''
       setAutoSaveStatus('idle')
       loadTemplate(id)
       loadVersions(id)
       loadAutoSaveSettings()
+      window.electronAPI?.settings.getAll()
+        .then((settings: Record<string, string>) => {
+          const savedPath = settings?.[getTemplateFilePathSettingKey(id)] || null
+          documentFilePathRef.current = savedPath
+          setDocumentFilePath(savedPath)
+        })
+        .catch(() => {
+          documentFilePathRef.current = null
+          setDocumentFilePath(null)
+        })
+    } else {
+      clearCurrentTemplate()
+      clearObjects()
+      setDataSources([])
+      setShowNewWizard(true)
+      setShowArtboard(false)
+      setShowDataSource(false)
+      hasLoadedVersionRef.current = false
+      lastSavedHashRef.current = ''
+      documentFilePathRef.current = null
+      setDocumentFilePath(null)
     }
-  }, [id, loadAutoSaveSettings])
+  }, [id, clearCurrentTemplate, clearObjects, loadAutoSaveSettings, loadTemplate, loadVersions])
 
   useEffect(() => {
     if (currentTemplate && id && !hasLoadedVersionRef.current) {
@@ -245,13 +392,6 @@ export default function TemplateDesigner() {
       }
     }
   }, [currentTemplate, getCanvasHash, versions])
-
-  useEffect(() => {
-    if (!id && currentTemplate) {
-      navigate(`/app/templates/${currentTemplate.id}/edit`, { replace: true })
-      setShowNewWizard(false)
-    }
-  }, [currentTemplate])
 
   useEffect(() => {
     return () => {
@@ -318,20 +458,25 @@ export default function TemplateDesigner() {
   const handleArtboardUpdate = async (updates: any) => {
     if (!currentTemplate) return
     const nextTemplate = { ...currentTemplate, ...updates }
-    setCanvasSize(
-      mmToPx(nextTemplate.label_width, nextTemplate.unit, nextTemplate.dpi),
-      mmToPx(nextTemplate.label_height, nextTemplate.unit, nextTemplate.dpi)
-    )
+    const nextWidth = mmToPx(nextTemplate.label_width, nextTemplate.unit, nextTemplate.dpi)
+    const nextHeight = mmToPx(nextTemplate.label_height, nextTemplate.unit, nextTemplate.dpi)
+    setCanvasSize(nextWidth, nextHeight)
     const updated = await updateTemplate(currentTemplate.id, updates)
     if (updated) {
-      setCanvasSize(
-        mmToPx(updated.label_width, updated.unit, updated.dpi),
-        mmToPx(updated.label_height, updated.unit, updated.dpi)
-      )
+      const updatedWidth = mmToPx(updated.label_width, updated.unit, updated.dpi)
+      const updatedHeight = mmToPx(updated.label_height, updated.unit, updated.dpi)
+      setCanvasSize(updatedWidth, updatedHeight)
+      requestAnimationFrame(() => {
+        const workspace = workspaceRef.current
+        if (!workspace) return
+        const availableWidth = Math.max(120, workspace.clientWidth - 120)
+        const availableHeight = Math.max(120, workspace.clientHeight - 120)
+        setClampedZoom(Math.min(availableWidth / updatedWidth, availableHeight / updatedHeight, 1))
+      })
     }
   }
 
-  const handleSave = async (silent = false) => {
+  const handleSave = async (silent = false, saveAs = false) => {
     if (!currentTemplate) return
     if (silent && autoSaveInFlightRef.current) return
     const canvasData = buildCanvasData()
@@ -350,7 +495,46 @@ export default function TemplateDesigner() {
         change_comment: silent ? 'Auto save' : 'Manual save',
       })
       if (!savedVersion) throw new Error('Save failed')
+
+      if (!silent) {
+        const exportData = {
+          format: 'labelforge-template',
+          formatVersion: 1,
+          savedAt: new Date().toISOString(),
+          template: currentTemplate,
+          canvas: canvasData,
+        }
+        const safeName = currentTemplate.name
+          .trim()
+          .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+          .replace(/\s+/g, ' ')
+          || 'Untitled Label'
+        const saveResult = await window.electronAPI?.app.saveFile({
+          title: saveAs ? 'Save LabelForge Template As' : 'Save LabelForge Template',
+          defaultPath: `${safeName}.lfx`,
+          filePath: saveAs ? undefined : documentFilePathRef.current || undefined,
+          showDialog: saveAs || !documentFilePathRef.current,
+          extension: '.lfx',
+          filters: [
+            { name: 'LabelForge Template', extensions: ['lfx'] },
+            { name: 'JSON Document', extensions: ['json'] },
+          ],
+          content: JSON.stringify(exportData, null, 2),
+        })
+        if (saveResult?.canceled) return
+        if (!saveResult?.success) {
+          throw new Error(saveResult?.error || 'Could not save the template file')
+        }
+        documentFilePathRef.current = saveResult.filePath
+        setDocumentFilePath(saveResult.filePath)
+        await window.electronAPI?.settings.set(
+          getTemplateFilePathSettingKey(currentTemplate.id),
+          saveResult.filePath,
+        )
+      }
+
       lastSavedHashRef.current = canvasHash
+      if (id) await loadVersions(id)
       setLastSavedAt(new Date().toLocaleTimeString())
       setAutoSaveStatus(silent ? 'saved' : 'idle')
     } catch (error) {
@@ -472,6 +656,7 @@ export default function TemplateDesigner() {
           x: 20, y: 20, width: 100, height: 100, rotation: 0,
           visible: true, locked: false, opacity: 1,
           source: '', sourceType: 'embedded', maintainAspectRatio: true,
+          fitMode: 'contain', cropX: 50, cropY: 50, flipHorizontal: false, flipVertical: false,
         } as any
         break
       case 'datetime':
@@ -507,7 +692,7 @@ export default function TemplateDesigner() {
     if (e.evt.button === 2) return
     setContextMenu(null)
     if (e.target === e.target.getStage() || e.target.name() === 'canvas-bg') {
-      if (!e.evt.shiftKey) {
+      if (!e.evt.metaKey && !e.evt.ctrlKey) {
         selectObject(null)
         setShowArtboard(true)
         setShowDataSource(false)
@@ -558,7 +743,18 @@ export default function TemplateDesigner() {
     const objectId = getObjectIdFromNode(node)
     if (!objectId) return false
 
-    selectObject(objectId)
+    const clickedObject = objects.find((object) => object.id === objectId)
+    if (!selectedObjectIds.includes(objectId)) {
+      if (clickedObject?.groupId) {
+        selectObjects(
+          objects
+            .filter((object) => object.groupId === clickedObject.groupId)
+            .map((object) => object.id)
+        )
+      } else {
+        selectObject(objectId)
+      }
+    }
     setSmartGuides([])
     setContextMenu({
       x: clientX,
@@ -566,7 +762,7 @@ export default function TemplateDesigner() {
       objectId,
     })
     return true
-  }, [getObjectIdFromNode, selectObject])
+  }, [getObjectIdFromNode, objects, selectObject, selectObjects, selectedObjectIds])
 
   const openContextMenuForNode = useCallback((node: unknown, evt: MouseEvent) => {
     evt.preventDefault()
@@ -602,12 +798,21 @@ export default function TemplateDesigner() {
     openContextMenuForNode(e.target, e.evt)
   }, [openContextMenuForNode])
 
-  const handleObjectClick = (objId: string, shiftKey: boolean) => {
+  const handleObjectClick = (objId: string, multiSelect: boolean) => {
     setContextMenu(null)
-    if (shiftKey) {
+    if (multiSelect) {
       toggleObjectSelection(objId)
     } else {
-      selectObject(objId)
+      const object = objects.find((item) => item.id === objId)
+      if (object?.groupId) {
+        selectObjects(
+          objects
+            .filter((item) => item.groupId === object.groupId)
+            .map((item) => item.id)
+        )
+      } else {
+        selectObject(objId)
+      }
     }
     setShowArtboard(false)
     setShowDataSource(false)
@@ -616,8 +821,14 @@ export default function TemplateDesigner() {
   const handleObjectMouseDown = useCallback((objId: string, e: any) => {
     if (isContextClick(e.evt)) {
       e.cancelBubble = true
+      return
     }
-  }, [isContextClick])
+
+    const object = objects.find((item) => item.id === objId)
+    if (object?.groupId && !e.evt.metaKey && !e.evt.ctrlKey) {
+      selectObjects(objects.filter((item) => item.groupId === object.groupId).map((item) => item.id))
+    }
+  }, [isContextClick, objects, selectObjects])
 
   const handleObjectContextMenu = useCallback((objId: string, e: any) => {
     e.evt.preventDefault()
@@ -625,11 +836,16 @@ export default function TemplateDesigner() {
     openContextMenuForNode(e.target, e.evt)
   }, [openContextMenuForNode])
 
-  const handleDeleteSelected = useCallback(() => {
+  const handleDeleteSelected = useCallback(async () => {
     if (selectedObjectIds.length > 0) {
+      const count = selectedObjectIds.length
+      if (!await confirm({
+        title: count === 1 ? 'Delete item?' : `Delete ${count} items?`,
+        message: count === 1 ? 'This item will be permanently removed from the design.' : `These ${count} items will be permanently removed from the design.`,
+      })) return
       deleteSelectedObjects()
     }
-  }, [selectedObjectIds, deleteSelectedObjects])
+  }, [confirm, selectedObjectIds, deleteSelectedObjects])
 
   const handleAlign = useCallback((action: string) => {
     if (!selectedObjectId) return
@@ -651,7 +867,8 @@ export default function TemplateDesigner() {
     onUndo: undo,
     onRedo: redo,
     onDelete: handleDeleteSelected,
-    onSave: handleSave,
+    onSave: () => { void handleSave(false) },
+    onSaveAs: () => { void handleSave(false, true) },
     onCopy: () => copyObject(),
     onPaste: () => pasteObject(),
     onCut: () => { copyObject(); handleDeleteSelected() },
@@ -763,22 +980,74 @@ export default function TemplateDesigner() {
       return
     }
 
-    const bounds = getObjectBounds({ ...obj, x: node.x(), y: node.y() })
+    const gridX = Math.round(node.x() / gridSize) * gridSize
+    const gridY = Math.round(node.y() / gridSize) * gridSize
+    const bounds = getObjectBounds({ ...obj, x: gridX, y: gridY })
     const result = getSnapResult(bounds, obj.id)
     node.position({ x: result.x, y: result.y })
     setSmartGuides(result.guides)
-  }, [getObjectBounds, getSnapResult, snapToGrid])
+  }, [getObjectBounds, getSnapResult, gridSize, snapToGrid])
 
   const handleObjectDragMove = useCallback((obj: LabelObject, e: any) => {
-    snapNodePosition(obj, e.currentTarget)
-  }, [snapNodePosition])
+    const node = e.currentTarget
+    if (!multiDragRef.current) {
+      const selectedIds = selectedObjectIds.includes(obj.id) && selectedObjectIds.length > 1
+        ? selectedObjectIds
+        : obj.groupId
+          ? objects.filter((item) => item.groupId === obj.groupId).map((item) => item.id)
+          : [obj.id]
+
+      multiDragRef.current = {
+        anchorId: obj.id,
+        startX: obj.x,
+        startY: obj.y,
+        objectIds: selectedIds,
+      }
+    }
+
+    snapNodePosition(obj, node)
+    const drag = multiDragRef.current
+    const deltaX = node.x() - drag.startX
+    const deltaY = node.y() - drag.startY
+    const stage = stageRef.current
+
+    drag.objectIds.forEach((objectId) => {
+      if (objectId === drag.anchorId) return
+      const original = objects.find((item) => item.id === objectId)
+      const siblingNode = stage?.findOne(`#${getNodeId(objectId)}`)
+      if (original && siblingNode) {
+        siblingNode.position({
+          x: original.x + deltaX,
+          y: original.y + deltaY,
+        })
+      }
+    })
+    node.getLayer()?.batchDraw()
+  }, [objects, selectedObjectIds, snapNodePosition])
 
   const handleObjectDragEnd = useCallback((obj: LabelObject, e: any) => {
     const node = e.currentTarget
     snapNodePosition(obj, node)
-    updateObject(obj.id, { x: node.x(), y: node.y() })
+    const drag = multiDragRef.current
+    const objectIds = drag?.objectIds || [obj.id]
+    const deltaX = node.x() - (drag?.startX ?? obj.x)
+    const deltaY = node.y() - (drag?.startY ?? obj.y)
+    moveObjects(objectIds, deltaX, deltaY)
+    multiDragRef.current = null
     setSmartGuides([])
-  }, [snapNodePosition, updateObject])
+  }, [moveObjects, snapNodePosition])
+
+  const finishRendererDrag = useCallback((obj: LabelObject, x: number, y: number) => {
+    const drag = multiDragRef.current
+    const objectIds = drag?.objectIds || [obj.id]
+    moveObjects(
+      objectIds,
+      x - (drag?.startX ?? obj.x),
+      y - (drag?.startY ?? obj.y),
+    )
+    multiDragRef.current = null
+    setSmartGuides([])
+  }, [moveObjects])
 
   useEffect(() => {
     const transformer = transformerRef.current
@@ -855,16 +1124,47 @@ export default function TemplateDesigner() {
     closeContextMenu()
   }, [closeContextMenu, flashLayerObject, objects, reorderObjects, selectObject])
 
-  const handleContextAction = useCallback((action: 'copy' | 'paste' | 'duplicate' | 'delete') => {
+  const handleContextAction = useCallback(async (action: 'copy' | 'paste' | 'duplicate' | 'delete') => {
     if (!contextMenu) return
 
     if (action === 'copy') copyObject()
     if (action === 'paste') pasteObject()
     if (action === 'duplicate') duplicateObject()
-    if (action === 'delete') deleteObject(contextMenu.objectId)
+    if (action === 'delete') {
+      const count = selectedObjectIds.includes(contextMenu.objectId) ? selectedObjectIds.length : 1
+      if (!await confirm({
+        title: count === 1 ? 'Delete item?' : `Delete ${count} items?`,
+        message: count === 1 ? 'This item will be permanently removed from the design.' : `These ${count} items will be permanently removed from the design.`,
+      })) {
+        closeContextMenu()
+        return
+      }
+      if (selectedObjectIds.includes(contextMenu.objectId) && selectedObjectIds.length > 1) {
+        deleteSelectedObjects()
+      } else {
+        deleteObject(contextMenu.objectId)
+      }
+    }
 
     closeContextMenu()
-  }, [closeContextMenu, contextMenu, copyObject, deleteObject, duplicateObject, pasteObject])
+  }, [closeContextMenu, confirm, contextMenu, copyObject, deleteObject, deleteSelectedObjects, duplicateObject, pasteObject, selectedObjectIds])
+
+  const handleImageContextAction = useCallback((action: ImageContextAction) => {
+    if (!contextMenu) return
+    const image = objects.find((object) => object.id === contextMenu.objectId) as ImageObject | undefined
+    if (!image || image.type !== 'image') return
+    const updates: Partial<ImageObject> =
+      action === 'fit' ? { fitMode: 'contain', maintainAspectRatio: true } :
+      action === 'fill' ? { fitMode: 'cover', maintainAspectRatio: true } :
+      action === 'stretch' ? { fitMode: 'stretch', maintainAspectRatio: false } :
+      action === 'portrait' ? { width: Math.min(image.width, image.height), height: Math.max(image.width, image.height) } :
+      action === 'landscape' ? { width: Math.max(image.width, image.height), height: Math.min(image.width, image.height) } :
+      action === 'flip-horizontal' ? { flipHorizontal: !image.flipHorizontal } :
+      action === 'flip-vertical' ? { flipVertical: !image.flipVertical } :
+      { fitMode: 'contain', maintainAspectRatio: true, cropX: 50, cropY: 50, flipHorizontal: false, flipVertical: false, rotation: 0 }
+    updateObject(image.id, updates)
+    closeContextMenu()
+  }, [closeContextMenu, contextMenu, objects, updateObject])
 
   const renderObject = (obj: LabelObject) => {
     const isSelected = selectedObjectIds.includes(obj.id)
@@ -875,49 +1175,28 @@ export default function TemplateDesigner() {
     switch (obj.type) {
       case 'text': {
         const textObj = obj as TextObject
-        const hasBackground = Boolean(textObj.backgroundColor && textObj.backgroundColor !== 'transparent')
         return (
-          <Group
+          <RichTextRenderer
+            object={textObj}
             id={getNodeId(obj.id)}
             key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            visible={inlineTextEditor?.objectId !== obj.id}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
+            onDblClick={() => {
+              selectObject(obj.id)
+              setInlineTextEditor({ objectId: obj.id, value: textObj.value })
+            }}
+            onDblTap={() => {
+              selectObject(obj.id)
+              setInlineTextEditor({ objectId: obj.id, value: textObj.value })
+            }}
             draggable
             onDragMove={(e) => handleObjectDragMove(obj, e)}
             onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          >
-            {hasBackground && (
-              <Rect
-                width={obj.width}
-                height={obj.height}
-                fill={textObj.backgroundColor}
-                listening={false}
-              />
-            )}
-            <Text
-              text={textObj.value}
-              fontSize={textObj.fontSize}
-              fontFamily={textObj.fontFamily}
-              fontStyle={`${textObj.bold ? 'bold' : ''} ${textObj.italic ? 'italic' : ''}`.trim() || 'normal'}
-              fill={textObj.textColor}
-              width={obj.width}
-              height={obj.height}
-              align={textObj.horizontalAlign}
-              verticalAlign={textObj.verticalAlign as any}
-              lineHeight={textObj.lineHeight}
-              letterSpacing={textObj.letterSpacing}
-              wrap={textObj.wordWrap ? 'word' : 'none'}
-              textDecoration={textObj.underline ? 'underline' : ''}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 8 : 0}
-              shadowOpacity={isLayerFlashing ? 0.4 : 0}
-            />
-          </Group>
+          />
         )
       }
       case 'barcode': {
@@ -942,13 +1221,12 @@ export default function TemplateDesigner() {
               backgroundColor: bcObj.backgroundColor,
             }}
             selected={isSelected || isLayerFlashing}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onDragMove={(e) => handleObjectDragMove(obj, e)}
             onDragEnd={(x, y) => {
-              updateObject(obj.id, { x, y })
-              setSmartGuides([])
+              finishRendererDrag(obj, x, y)
             }}
           />
         )
@@ -973,13 +1251,12 @@ export default function TemplateDesigner() {
               backgroundColor: qrObj.backgroundColor,
             }}
             selected={isSelected || isLayerFlashing}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onDragMove={(e) => handleObjectDragMove(obj, e)}
             onDragEnd={(x, y) => {
-              updateObject(obj.id, { x, y })
-              setSmartGuides([])
+              finishRendererDrag(obj, x, y)
             }}
           />
         )
@@ -987,25 +1264,15 @@ export default function TemplateDesigner() {
       case 'shape': {
         const shapeObj = obj as ShapeObject
         return (
-          <Rect
+          <ShapeRenderer
+            object={shapeObj}
             id={getNodeId(obj.id)}
             key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            width={obj.width}
-            height={obj.height}
-            rotation={obj.rotation}
-            fill={shapeObj.fillColor}
             stroke={(isSelected || isLayerFlashing) ? selectionStroke : shapeObj.borderColor}
             strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : shapeObj.borderWidth}
-            shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-            shadowBlur={isLayerFlashing ? 10 : 0}
-            shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            cornerRadius={shapeObj.cornerRadius}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragMove={(e) => handleObjectDragMove(obj, e)}
             onDragEnd={(e) => handleObjectDragEnd(obj, e)}
@@ -1021,7 +1288,7 @@ export default function TemplateDesigner() {
             x={obj.x}
             y={obj.y}
             rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
@@ -1051,7 +1318,7 @@ export default function TemplateDesigner() {
             x={obj.x}
             y={obj.y}
             rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
@@ -1092,7 +1359,7 @@ export default function TemplateDesigner() {
             x={obj.x}
             y={obj.y}
             rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
@@ -1123,42 +1390,32 @@ export default function TemplateDesigner() {
         )
       }
       case 'image': {
-        const imgObj = obj as any
+        const imageObj = obj as ImageObject
         return (
-          <Group
+          <ImageRenderer
             id={getNodeId(obj.id)}
             key={obj.id}
+            source={imageObj.source}
             x={obj.x}
             y={obj.y}
+            width={obj.width}
+            height={obj.height}
             rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            opacity={obj.opacity}
+            maintainAspectRatio={imageObj.maintainAspectRatio}
+            fitMode={imageObj.fitMode}
+            cropX={imageObj.cropX}
+            cropY={imageObj.cropY}
+            flipHorizontal={imageObj.flipHorizontal}
+            flipVertical={imageObj.flipVertical}
+            selected={isSelected || isLayerFlashing}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
             draggable
             onDragMove={(e) => handleObjectDragMove(obj, e)}
             onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill="#f0f0f0"
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : '#999'}
-              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 1}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 10 : 0}
-              shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            />
-            <Text
-              text="IMG"
-              fontSize={14}
-              fill="#666"
-              width={obj.width}
-              height={obj.height}
-              align="center"
-              verticalAlign="middle"
-            />
-          </Group>
+          />
         )
       }
       case 'rfid': {
@@ -1169,7 +1426,7 @@ export default function TemplateDesigner() {
             x={obj.x}
             y={obj.y}
             rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
@@ -1214,7 +1471,7 @@ export default function TemplateDesigner() {
             shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
             shadowBlur={isLayerFlashing ? 10 : 0}
             shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.shiftKey)}
+            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
@@ -1228,105 +1485,12 @@ export default function TemplateDesigner() {
 
   if (showNewWizard) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="w-full max-w-lg rounded-xl bg-white p-8 shadow-lg border border-[var(--border-color)]">
-          <h2 className="mb-6 text-xl font-bold">New Template</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Template Name *</label>
-              <input
-                type="text"
-                value={wizardData.name}
-                onChange={(e) => setWizardData({ ...wizardData, name: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Product Label"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Description</label>
-              <textarea
-                value={wizardData.description}
-                onChange={(e) => setWizardData({ ...wizardData, description: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                rows={2}
-                placeholder="Optional description"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Width *</label>
-                <input
-                  type="number"
-                  value={wizardData.label_width}
-                  onChange={(e) => setWizardData({ ...wizardData, label_width: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Height *</label>
-                <input
-                  type="number"
-                  value={wizardData.label_height}
-                  onChange={(e) => setWizardData({ ...wizardData, label_height: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Unit</label>
-                <select
-                  value={wizardData.unit}
-                  onChange={(e) => setWizardData({ ...wizardData, unit: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="mm">mm</option>
-                  <option value="cm">cm</option>
-                  <option value="in">in</option>
-                  <option value="px">px</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">DPI</label>
-                <select
-                  value={wizardData.dpi}
-                  onChange={(e) => setWizardData({ ...wizardData, dpi: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value={203}>203 DPI</option>
-                  <option value={300}>300 DPI</option>
-                  <option value={600}>600 DPI</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Printer Type</label>
-                <input
-                  type="text"
-                  value={wizardData.printer_type}
-                  onChange={(e) => setWizardData({ ...wizardData, printer_type: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="e.g., Zebra"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                onClick={() => navigate('/app/templates')}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateTemplate}
-                disabled={!wizardData.name.trim()}
-                className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
-              >
-                Create Template
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <NewTemplateWizard
+        data={wizardData}
+        setData={setWizardData}
+        onCancel={() => navigate('/app/templates')}
+        onCreate={handleCreateTemplate}
+      />
     )
   }
 
@@ -1352,7 +1516,10 @@ export default function TemplateDesigner() {
       }}
     >
       <Toolbar
-        onSave={handleSave}
+        onSave={() => { void handleSave(false) }}
+        onSaveAs={() => { void handleSave(false, true) }}
+        onExport={() => { void handleSave(false, true) }}
+        onPrint={() => navigate(`/app/templates/${currentTemplate?.id}/preview`)}
         isSaving={isSaving}
         onAddObject={handleAddObject}
         onToggleGrid={toggleGrid}
@@ -1386,67 +1553,69 @@ export default function TemplateDesigner() {
         <LayersPanel
           objects={objects}
           selectedObjectId={selectedObjectId}
+          selectedObjectIds={selectedObjectIds}
           onSelect={selectObject}
+          onToggleSelect={toggleObjectSelection}
+          onSelectGroup={selectObjects}
+          onRename={(objectId, name) => updateObject(objectId, { name })}
+          onRenameGroup={(groupId, groupName) => {
+            objects
+              .filter((object) => object.groupId === groupId)
+              .forEach((object) => updateObject(object.id, { groupName }))
+          }}
+          onGroupSelected={groupSelectedObjects}
+          onUngroup={ungroupObjects}
           onMoveUp={(id) => moveLayerInPanel(id, 'up')}
           onMoveDown={(id) => moveLayerInPanel(id, 'down')}
           onReorder={applyLayerOrder}
           onLayerPreview={flashLayerObject}
         />
 
-        <div className="relative flex-1 overflow-auto bg-[#e8edf4]">
-          <div className="absolute right-5 top-5 z-20 flex items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
-            <button
-              type="button"
-              onClick={zoomOut}
-              className="flex h-9 w-9 items-center justify-center border-r border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              title="Zoom out (Cmd/Ctrl+-)"
-            >
-              -
-            </button>
-            <button
-              type="button"
-              onClick={zoomToActual}
-              className="h-9 min-w-16 border-r border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              title="Actual size"
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-            <button
-              type="button"
-              onClick={zoomIn}
-              className="flex h-9 w-9 items-center justify-center border-r border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              title="Zoom in (Cmd/Ctrl++)"
-            >
-              +
-            </button>
-            <button
-              type="button"
-              onClick={zoomToFit}
-              className="h-9 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              title="Fit artboard"
-            >
-              Fit
-            </button>
+        <div
+          ref={workspaceRef}
+          className="relative flex-1 overflow-auto bg-[#e8edf4]"
+          onScroll={(event) => {
+            setWorkspaceScroll({
+              left: event.currentTarget.scrollLeft,
+              top: event.currentTarget.scrollTop,
+            })
+          }}
+        >
+          <div className="sticky left-0 top-0 z-30 h-6 w-6 border-b border-r border-slate-300 bg-slate-100" />
+          <div className="pointer-events-none sticky top-0 z-20 -mt-6 ml-6 h-6 overflow-hidden border-b border-slate-300 bg-slate-100 shadow-sm">
+            <Stage width={Math.max(workspaceSize.width - 24, canvasWidth * zoom + 4)} height={24}>
+              <Layer>
+                <Ruler
+                  size={Math.max(workspaceSize.width - 24, canvasWidth * zoom)}
+                  zoom={zoom}
+                  unit={currentTemplate?.unit || 'mm'}
+                  dpi={currentTemplate?.dpi || 300}
+                  offset={rulerOffset.x}
+                  direction="horizontal"
+                />
+              </Layer>
+            </Stage>
           </div>
-          <div className="flex min-h-full items-center justify-center p-10">
-            <div className="rounded-xl border border-slate-300 bg-slate-200/70 p-4 shadow-sm">
-              <div style={{ display: 'inline-grid', gridTemplateColumns: '24px auto', gridTemplateRows: '24px auto' }}>
-                <div className="rounded-tl-md border-b border-r border-slate-300 bg-slate-100" />
-                <div className="overflow-hidden border-b border-slate-300 bg-slate-100" style={{ height: '24px' }}>
-                  <Stage width={canvasWidth * zoom + 4} height={24}>
-                    <Layer>
-                      <Ruler size={canvasWidth * zoom} zoom={zoom} unit={currentTemplate?.unit || 'mm'} dpi={currentTemplate?.dpi || 300} offset={0} direction="horizontal" />
-                    </Layer>
-                  </Stage>
-                </div>
-                <div className="overflow-hidden border-r border-slate-300 bg-slate-100" style={{ width: '24px' }}>
-                  <Stage width={24} height={canvasHeight * zoom + 4}>
-                    <Layer>
-                      <Ruler size={canvasHeight * zoom} zoom={zoom} unit={currentTemplate?.unit || 'mm'} dpi={currentTemplate?.dpi || 300} offset={0} direction="vertical" />
-                    </Layer>
-                  </Stage>
-                </div>
-                <div className="bg-white shadow-lg shadow-slate-900/15 ring-1 ring-slate-300">
+          <div className="pointer-events-none sticky left-0 z-20 h-0 w-6 overflow-visible">
+            <div className="h-[calc(100vh-24px)] w-6 overflow-hidden border-r border-slate-300 bg-slate-100 shadow-sm">
+              <Stage width={24} height={Math.max(workspaceSize.height - 24, canvasHeight * zoom + 4)}>
+                <Layer>
+                  <Ruler
+                    size={Math.max(workspaceSize.height - 24, canvasHeight * zoom)}
+                    zoom={zoom}
+                    unit={currentTemplate?.unit || 'mm'}
+                    dpi={currentTemplate?.dpi || 300}
+                    offset={rulerOffset.y}
+                    direction="vertical"
+                  />
+                </Layer>
+              </Stage>
+            </div>
+          </div>
+          <div className="flex min-h-full min-w-max items-center justify-center p-12">
+            <div ref={artboardRef} className="relative">
+              <div>
+                <div className="overflow-hidden bg-white shadow-[0_12px_32px_rgba(15,23,42,0.14),0_2px_6px_rgba(15,23,42,0.08)] ring-1 ring-slate-400/70">
                   <Stage
                     ref={stageRef}
                     width={canvasWidth * zoom + 4}
@@ -1457,7 +1626,6 @@ export default function TemplateDesigner() {
                     scale={{ x: zoom, y: zoom }}
                   >
                     <Layer offsetX={-2} offsetY={-2}>
-                      {gridLines}
                       <Rect
                         name="canvas-bg"
                         x={0}
@@ -1468,6 +1636,7 @@ export default function TemplateDesigner() {
                         stroke="#cbd5e1"
                         strokeWidth={1}
                       />
+                      {gridLines}
                       {objects.filter(o => o.visible).map(renderObject)}
                       {smartGuides.map((guide, index) => (
                         <Line
@@ -1518,6 +1687,61 @@ export default function TemplateDesigner() {
               </div>
             </div>
           </div>
+
+          {inlineTextEditor && (() => {
+            const textObject = objects.find((object) => object.id === inlineTextEditor.objectId) as TextObject | undefined
+            const stageContainer = stageRef.current?.container?.() as HTMLDivElement | undefined
+            if (!textObject || !stageContainer) return null
+            const stageBounds = stageContainer.getBoundingClientRect()
+
+            return (
+              <textarea
+                ref={inlineTextAreaRef}
+                value={inlineTextEditor.value}
+                onSelect={(event) => setTextSelection({
+                  start: event.currentTarget.selectionStart,
+                  end: event.currentTarget.selectionEnd,
+                })}
+                onChange={(event) => {
+                  setInlineTextEditor((current) => current
+                    ? { ...current, value: event.target.value }
+                    : current)
+                }}
+                onBlur={() => finishInlineTextEdit(true)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    finishInlineTextEdit(false)
+                  } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault()
+                    finishInlineTextEdit(true)
+                  }
+                }}
+                className="fixed z-50 resize-none overflow-hidden border-2 border-blue-500 bg-white/95 p-0 outline-none shadow-sm"
+                style={{
+                  left: stageBounds.left + textObject.x * zoom,
+                  top: stageBounds.top + textObject.y * zoom,
+                  width: Math.max(40, textObject.width * zoom),
+                  height: Math.max(textObject.fontSize * zoom * 1.5, textObject.height * zoom),
+                  color: textObject.textColor,
+                  backgroundColor: textObject.backgroundColor === 'transparent'
+                    ? 'rgba(255,255,255,0.95)'
+                    : textObject.backgroundColor,
+                  fontFamily: textObject.fontFamily,
+                  fontSize: `${textObject.fontSize * zoom}px`,
+                  fontWeight: textObject.bold ? 700 : 400,
+                  fontStyle: textObject.italic ? 'italic' : 'normal',
+                  textDecoration: textObject.underline ? 'underline' : 'none',
+                  lineHeight: String(textObject.lineHeight),
+                  letterSpacing: `${textObject.letterSpacing * zoom}px`,
+                  textAlign: textObject.horizontalAlign as React.CSSProperties['textAlign'],
+                  transform: `rotate(${textObject.rotation}deg)`,
+                  transformOrigin: 'top left',
+                }}
+                aria-label="Edit text item"
+              />
+            )
+          })()}
         </div>
 
         {showArtboard && currentTemplate && (
@@ -1530,7 +1754,9 @@ export default function TemplateDesigner() {
           <PropertiesPanel
             object={selectedObject}
             onUpdate={(updates) => updateObjectFromProperties(selectedObject.id, updates)}
-            onDelete={() => deleteObject(selectedObject.id)}
+            onDelete={handleDeleteSelected}
+            textSelection={selectedObject.type === 'text' ? textSelection : undefined}
+            onTextSelectionChange={selectedObject.type === 'text' ? setTextSelection : undefined}
           />
         )}
         {!showArtboard && !selectedObject && !showDataSource && currentTemplate && (
@@ -1551,49 +1777,42 @@ export default function TemplateDesigner() {
       </div>
 
       {contextMenu && (
-        <div
-          className="fixed z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-xs shadow-2xl shadow-slate-900/20 ring-1 ring-black/5"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Object actions
-          </div>
-          <ContextMenuItem icon={faCopy} label="Copy" onClick={() => handleContextAction('copy')} />
-          <ContextMenuItem icon={faPaste} label="Paste" onClick={() => handleContextAction('paste')} />
-          <ContextMenuItem icon={faClone} label="Duplicate" onClick={() => handleContextAction('duplicate')} />
-          <div className="my-1 border-t border-slate-100" />
-          <ContextMenuItem icon={faLayerGroup} label="Bring to Front" onClick={() => moveObjectInStack(contextMenu.objectId, 'front')} />
-          <ContextMenuItem icon={faArrowUp} label="Bring Forward" onClick={() => moveObjectInStack(contextMenu.objectId, 'forward')} />
-          <ContextMenuItem icon={faArrowDown} label="Send Backward" onClick={() => moveObjectInStack(contextMenu.objectId, 'backward')} />
-          <ContextMenuItem icon={faLayerGroup} label="Send to Back" onClick={() => moveObjectInStack(contextMenu.objectId, 'back')} />
-          <div className="my-1 border-t border-slate-100" />
-          <ContextMenuItem icon={faTrash} label="Delete" danger onClick={() => handleContextAction('delete')} />
-        </div>
+        <ObjectContextMenu
+          menu={contextMenu}
+          onAction={handleContextAction}
+          onStackAction={moveObjectInStack}
+          selectionCount={selectedObjectIds.length}
+          canGroup={selectedObjectIds.length > 1 && !selectedObjectIds.every((id) => Boolean(objects.find((object) => object.id === id)?.groupId))}
+          canUngroup={selectedObjectIds.some((id) => Boolean(objects.find((object) => object.id === id)?.groupId))}
+          isImage={objects.find((object) => object.id === contextMenu.objectId)?.type === 'image'}
+          onImageAction={handleImageContextAction}
+          onGroup={() => {
+            groupSelectedObjects()
+            closeContextMenu()
+          }}
+          onUngroup={() => {
+            const groupIds = new Set(
+              selectedObjectIds
+                .map((id) => objects.find((object) => object.id === id)?.groupId)
+                .filter((groupId): groupId is string => Boolean(groupId))
+            )
+            groupIds.forEach((groupId) => ungroupObjects(groupId))
+            closeContextMenu()
+          }}
+        />
       )}
+      {confirmDialog}
 
-      <div className="flex h-8 shrink-0 items-center justify-between border-t border-[var(--border-color)] bg-white px-4 text-[11px] text-[var(--text-secondary)]">
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <span>Width: {currentTemplate?.label_width || 0}{currentTemplate?.unit || 'mm'}</span>
-          <span>Height: {currentTemplate?.label_height || 0}{currentTemplate?.unit || 'mm'}</span>
-          <span>DPI: {currentTemplate?.dpi || 300}</span>
-          <span>Status: {currentTemplate?.status || 'Draft'}</span>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <span>Objects: {objects.length}</span>
-          <span>Zoom: {Math.round(zoom * 100)}%</span>
-          <span>{showGrid ? 'Grid: On' : 'Grid: Off'}</span>
-          <span>{snapToGrid ? 'Snap: On' : 'Snap: Off'}</span>
-          {autoSaveStatus === 'pending' && <span className="text-amber-600">Unsaved changes</span>}
-          {autoSaveStatus === 'saving' && <span className="text-blue-600">Auto-saving...</span>}
-          {autoSaveStatus === 'error' && <span className="text-red-600">Auto-save failed</span>}
-          {lastSavedAt && autoSaveStatus !== 'pending' && autoSaveStatus !== 'saving' && autoSaveStatus !== 'error' && (
-            <span>Saved: {lastSavedAt}</span>
-          )}
-        </div>
-      </div>
+      <DesignerStatusBar
+        template={currentTemplate}
+        objectCount={objects.length}
+        zoom={zoom}
+        showGrid={showGrid}
+        snapToGrid={snapToGrid}
+        autoSaveStatus={autoSaveStatus}
+        lastSavedAt={lastSavedAt}
+        filePath={documentFilePath}
+      />
     </div>
   )
 }

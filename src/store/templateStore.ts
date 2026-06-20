@@ -13,6 +13,7 @@ interface TemplateState {
     search?: string
   }
   setFilters: (filters: Partial<{ status: string; search: string }>) => void
+  clearCurrentTemplate: () => void
   loadTemplates: () => Promise<void>
   loadTemplate: (id: string) => Promise<void>
   createTemplate: (data: any) => Promise<Template | null>
@@ -41,6 +42,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
   filters: {},
 
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
+  clearCurrentTemplate: () => set({ currentTemplate: null, currentVersion: null, versions: [] }),
 
   loadTemplates: async () => {
     set({ isLoading: true, error: null })
@@ -67,6 +69,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     try {
       const result = await getApi().templates.create(data)
       if (result.success) {
+        set({ currentTemplate: result.template, currentVersion: null, versions: [] })
         await get().loadTemplates()
         return result.template
       }

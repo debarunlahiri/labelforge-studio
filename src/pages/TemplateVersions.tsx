@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTemplateStore } from '../store/templateStore'
 import type { TemplateVersion } from '../types'
+import PageHero from '../components/PageHero'
+import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
 
 const statusColors: Record<string, string> = {
   Draft: 'bg-yellow-100 text-yellow-700 border-yellow-300',
@@ -50,10 +52,10 @@ function getObjectStatus(id: string, map1: Map<string, any>, map2: Map<string, a
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getObjectBreakdown(objects: any[]): string {
-  if (!objects || objects.length === 0) return '0 objects'
+  if (!objects || objects.length === 0) return '0 items'
   const counts: Record<string, number> = {}
   objects.forEach(o => { counts[o.type] = (counts[o.type] || 0) + 1 })
-  return `${objects.length} object${objects.length !== 1 ? 's' : ''}: ${Object.entries(counts).map(([t, c]) => `${c} ${t}`).join(', ')}`
+  return `${objects.length} item${objects.length !== 1 ? 's' : ''}: ${Object.entries(counts).map(([t, c]) => `${c} ${t}`).join(', ')}`
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,17 +168,21 @@ export default function TemplateVersions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <button
+      <PageHero
+        eyebrow="Design revisions"
+        title={currentTemplate ? `${currentTemplate.name} — Version History` : 'Version History'}
+        description="Compare revisions, review approval status, and restore earlier design states."
+        icon={faClockRotateLeft}
+        accent="violet"
+        actions={
+          <button
           onClick={() => navigate('/app/templates')}
-          className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm hover:bg-slate-50"
+          className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
         >
-          &larr; Back
+          &larr; Design Library
         </button>
-        <h1 className="text-2xl font-bold">
-          {currentTemplate ? `${currentTemplate.name} - Version History` : 'Version History'}
-        </h1>
-      </div>
+        }
+      />
 
       {selectedVersions.length === 2 && (
         <button
@@ -238,7 +244,7 @@ export default function TemplateVersions() {
 
             <div>
               <h3 className="text-sm font-semibold mb-2 text-[var(--text-secondary)]">
-                Object Comparison
+                Item Comparison
                 <span className="ml-2 text-[10px] font-normal">
                   <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-50 border border-red-200 mr-1 align-middle" />Removed
                   <span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-50 border border-green-200 ml-3 mr-1 align-middle" />Added
@@ -248,7 +254,7 @@ export default function TemplateVersions() {
               </h3>
               <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
                 {sortedIds.length === 0 && (
-                  <div className="text-xs text-[var(--text-secondary)] py-4 text-center">No objects in either version.</div>
+                  <div className="text-xs text-[var(--text-secondary)] py-4 text-center">No items in either version.</div>
                 )}
                 {sortedIds.map(id => {
                   const status = getObjectStatus(id, map1, map2)

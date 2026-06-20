@@ -4,7 +4,12 @@ import { Stage, Layer, Rect, Text, Group, Line } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
 import { renderToPNG, renderToPDF, renderToZPL, renderToEPL, renderToTSPL } from '../utils/labelRenderer'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType } from '../types'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject } from '../types'
+import SearchableSelect from '../components/SearchableSelect'
+import BarcodeRenderer from '../designer/BarcodeRenderer'
+import ImageRenderer from '../designer/ImageRenderer'
+import ShapeRenderer from '../designer/ShapeRenderer'
+import RichTextRenderer from '../designer/RichTextRenderer'
 
 const UNIT_TO_PX: Record<string, number> = {
   mm: 3.78,
@@ -57,7 +62,7 @@ export default function PrintPreview() {
         mmToPx(currentTemplate.label_width, currentTemplate.unit, currentTemplate.dpi),
         mmToPx(currentTemplate.label_height, currentTemplate.unit, currentTemplate.dpi)
       )
-      const currentVersion = versions.find(v => v.id === currentTemplate.current_version_id)
+      const currentVersion = versions.find(v => v.id === currentTemplate.current_version_id) || versions[0]
       if (currentVersion) {
         try {
           const canvas = JSON.parse(currentVersion.template_json)
@@ -147,7 +152,7 @@ export default function PrintPreview() {
     try {
       const result = await window.electronAPI?.printJobs.create({
         template_id: currentTemplate.id,
-        template_version_id: currentTemplate.current_version_id,
+        template_version_id: currentTemplate.current_version_id || versions[0]?.id,
         printer_id: selectedPrinter,
         requested_by: 'current_user',
         copies,
@@ -166,80 +171,55 @@ export default function PrintPreview() {
     switch (obj.type) {
       case 'text': {
         const textObj = obj as TextObject
-        const hasBackground = Boolean(textObj.backgroundColor && textObj.backgroundColor !== 'transparent')
-        return (
-          <Group key={obj.id} x={obj.x} y={obj.y} rotation={obj.rotation}>
-            {hasBackground && (
-              <Rect
-                width={obj.width}
-                height={obj.height}
-                fill={textObj.backgroundColor}
-              />
-            )}
-            <Text
-              text={textObj.value}
-              fontSize={textObj.fontSize}
-              fontFamily={textObj.fontFamily}
-              fontStyle={`${textObj.bold ? 'bold' : ''} ${textObj.italic ? 'italic' : ''}`.trim() || 'normal'}
-              fill={textObj.textColor}
-              width={obj.width}
-              height={obj.height}
-              align={textObj.horizontalAlign}
-              verticalAlign={textObj.verticalAlign as any}
-              lineHeight={textObj.lineHeight}
-              letterSpacing={textObj.letterSpacing}
-              wrap={textObj.wordWrap ? 'word' : 'none'}
-              textDecoration={textObj.underline ? 'underline' : ''}
-            />
-          </Group>
-        )
+        return <RichTextRenderer key={obj.id} object={textObj} />
       }
       case 'barcode': {
         const bcObj = obj as BarcodeObject
         return (
-          <Group key={obj.id} x={obj.x} y={obj.y} rotation={obj.rotation}>
-            <Rect width={obj.width} height={obj.height} fill={bcObj.backgroundColor} stroke="#333" strokeWidth={1} />
-            <Text
-              text={`[${bcObj.barcodeType}]`}
-              fontSize={12}
-              fill={bcObj.foregroundColor}
-              width={obj.width}
-              height={obj.height - (bcObj.showHumanReadable ? 16 : 0)}
-              align="center"
-              verticalAlign="middle"
-            />
-            {bcObj.showHumanReadable && (
-              <Text text={bcObj.value} fontSize={10} fill={bcObj.foregroundColor} width={obj.width} y={obj.height - 16} align="center" />
-            )}
-          </Group>
+          <BarcodeRenderer
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            value={bcObj.value}
+            barcodeType={bcObj.barcodeType}
+            width={obj.width}
+            height={obj.height}
+            options={{
+              showHumanReadable: bcObj.showHumanReadable,
+              moduleWidth: bcObj.moduleWidth,
+              barcodeHeight: bcObj.barcodeHeight,
+              quietZone: bcObj.quietZone,
+              foregroundColor: bcObj.foregroundColor,
+              backgroundColor: bcObj.backgroundColor,
+            }}
+          />
         )
       }
       case 'qrcode': {
         const qrObj = obj as QRCodeObject
         return (
-          <Group key={obj.id} x={obj.x} y={obj.y} rotation={obj.rotation}>
-            <Rect width={obj.width} height={obj.height} fill={qrObj.backgroundColor} stroke="#333" strokeWidth={1} />
-            <Rect x={8} y={8} width={obj.width - 16} height={obj.height - 16} fill={qrObj.foregroundColor} />
-            <Text text="QR" fontSize={12} fill="white" width={obj.width} height={obj.height} align="center" verticalAlign="middle" />
-          </Group>
+          <BarcodeRenderer
+            key={obj.id}
+            x={obj.x}
+            y={obj.y}
+            rotation={obj.rotation}
+            value={qrObj.value}
+            barcodeType={qrObj.barcodeType || 'QRCode'}
+            width={obj.width}
+            height={obj.height}
+            options={{
+              errorCorrectionLevel: qrObj.errorCorrectionLevel,
+              quietZone: qrObj.quietZone,
+              foregroundColor: qrObj.foregroundColor,
+              backgroundColor: qrObj.backgroundColor,
+            }}
+          />
         )
       }
       case 'shape': {
         const shapeObj = obj as ShapeObject
-        return (
-          <Rect
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            width={obj.width}
-            height={obj.height}
-            rotation={obj.rotation}
-            fill={shapeObj.fillColor}
-            stroke={shapeObj.borderColor}
-            strokeWidth={shapeObj.borderWidth}
-            cornerRadius={shapeObj.cornerRadius}
-          />
-        )
+        return <ShapeRenderer key={obj.id} object={shapeObj} stroke={shapeObj.borderColor} strokeWidth={shapeObj.borderWidth} />
       }
       case 'line': {
         const lineObj = obj as LineObjType
@@ -249,6 +229,27 @@ export default function PrintPreview() {
             points={[obj.x, obj.y, obj.x + lineObj.endX, obj.y + lineObj.endY]}
             stroke={lineObj.lineColor}
             strokeWidth={lineObj.lineThickness}
+          />
+        )
+      }
+      case 'image': {
+        const image = obj as ImageObject
+        return (
+          <ImageRenderer
+            key={obj.id}
+            source={image.source}
+            x={obj.x}
+            y={obj.y}
+            width={obj.width}
+            height={obj.height}
+            rotation={obj.rotation}
+            opacity={obj.opacity}
+            maintainAspectRatio={image.maintainAspectRatio}
+            fitMode={image.fitMode}
+            cropX={image.cropX}
+            cropY={image.cropY}
+            flipHorizontal={image.flipHorizontal}
+            flipVertical={image.flipVertical}
           />
         )
       }
@@ -316,16 +317,18 @@ export default function PrintPreview() {
 
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-[var(--text-secondary)]">Printer:</label>
-            <select
+            <SearchableSelect
               value={selectedPrinter}
-              onChange={(e) => setSelectedPrinter(e.target.value)}
-              className="max-w-56 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            >
-              <option value="">Select printer...</option>
-              {printers.map((printer: any) => (
-                <option key={printer.id} value={printer.id}>{printer.name}</option>
-              ))}
-            </select>
+              onChange={setSelectedPrinter}
+              placeholder="Select printer..."
+              searchPlaceholder="Search printers..."
+              className="w-56"
+              options={printers.map((printer: any) => ({
+                value: printer.id,
+                label: printer.name,
+                description: `${printer.printer_type || 'Unknown'} · ${printer.connection_type || 'driver'}`,
+              }))}
+            />
           </div>
 
           <div className="flex items-center gap-2">
@@ -361,7 +364,7 @@ export default function PrintPreview() {
         <div className="flex gap-4 text-xs text-[var(--text-secondary)]">
           <span>{currentTemplate.label_width}{currentTemplate.unit} x {currentTemplate.label_height}{currentTemplate.unit}</span>
           <span>{currentTemplate.dpi} DPI</span>
-          <span>{objects.length} objects</span>
+          <span>{objects.length} {objects.length === 1 ? 'item' : 'items'}</span>
           <span>{copies} cop{copies === 1 ? 'y' : 'ies'}</span>
         </div>
         <div className="flex gap-3">

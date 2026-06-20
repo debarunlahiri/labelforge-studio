@@ -9,6 +9,7 @@ import type {
   DateTimeObject,
   CounterObject,
 } from '../types'
+import { styleAt } from '../designer/richText'
 
 function convertToDots(value: number, unit: string, dpi: number): number {
   switch (unit) {
@@ -24,13 +25,24 @@ function convertToDots(value: number, unit: string, dpi: number): number {
   }
 }
 
-export function renderToCanvas(
+function loadImage(source: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    if (!source) return resolve(null)
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => resolve(null)
+    image.src = source
+  })
+}
+
+export async function renderToCanvas(
   objects: LabelObject[],
   width: number,
   height: number,
   dpi: number,
   unit: string
-): HTMLCanvasElement {
+): Promise<HTMLCanvasElement> {
   const pixelWidth = convertToPixels(width, unit, dpi)
   const pixelHeight = convertToPixels(height, unit, dpi)
 
@@ -46,6 +58,12 @@ export function renderToCanvas(
   const scaleY = pixelHeight / convertToPixels(height, unit, 96)
   ctx.scale(scaleX, scaleY)
 
+  const loadedImages = new Map<string, HTMLImageElement | null>()
+  await Promise.all(objects.filter((object) => object.type === 'image').map(async (object) => {
+    const imageObject = object as ImageObject
+    loadedImages.set(object.id, await loadImage(imageObject.source))
+  }))
+
   for (const obj of objects) {
     if (!obj.visible) continue
     ctx.save()
@@ -60,22 +78,38 @@ export function renderToCanvas(
         if (t.backgroundColor && t.backgroundColor !== 'transparent') {
           ctx.fillRect(0, 0, obj.width, obj.height)
         }
-        const fontStyle = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${t.fontSize}px ${t.fontFamily}`
-        ctx.font = fontStyle
-        ctx.fillStyle = t.textColor
-        ctx.textAlign = t.horizontalAlign as CanvasTextAlign
-        ctx.textBaseline = t.verticalAlign === 'middle' ? 'middle' : t.verticalAlign === 'bottom' ? 'bottom' : 'top'
-        const textX = t.horizontalAlign === 'center' ? obj.width / 2 : t.horizontalAlign === 'right' ? obj.width : 0
-        const textY = t.verticalAlign === 'middle' ? obj.height / 2 : t.verticalAlign === 'bottom' ? obj.height : 0
-        ctx.fillText(t.value, textX, textY)
-        if (t.underline) {
-          const width = ctx.measureText(t.value).width
-          const underlineY = textY + t.fontSize * 0.12
-          ctx.beginPath()
-          ctx.moveTo(textX, underlineY)
-          ctx.lineTo(textX + width, underlineY)
-          ctx.strokeStyle = t.textColor
-          ctx.stroke()
+        const lines = t.value.split('\n')
+        let textIndex = 0
+        let y = 0
+        for (const line of lines) {
+          const chars = [...line]
+          const widths = chars.map((char, index) => {
+            const style = styleAt(t, textIndex + index)
+            ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize}px "${style.fontFamily}", sans-serif`
+            return ctx.measureText(char).width + t.letterSpacing
+          })
+          const lineWidth = widths.reduce((sum, width) => sum + width, 0)
+          let x = t.horizontalAlign === 'center' ? (obj.width - lineWidth) / 2 : t.horizontalAlign === 'right' ? obj.width - lineWidth : 0
+          const maxSize = chars.reduce((size, _, index) => Math.max(size, styleAt(t, textIndex + index).fontSize), t.fontSize)
+          const baseline = y + maxSize
+          chars.forEach((char, index) => {
+            const style = styleAt(t, textIndex + index)
+            ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize}px "${style.fontFamily}", sans-serif`
+            ctx.fillStyle = style.textColor
+            ctx.textAlign = 'left'
+            ctx.textBaseline = 'alphabetic'
+            ctx.fillText(char, x, baseline)
+            if (style.underline) {
+              ctx.beginPath()
+              ctx.moveTo(x, baseline + 2)
+              ctx.lineTo(x + widths[index] - t.letterSpacing, baseline + 2)
+              ctx.strokeStyle = style.textColor
+              ctx.stroke()
+            }
+            x += widths[index]
+          })
+          y += maxSize * t.lineHeight
+          textIndex += line.length + 1
         }
         break
       }
@@ -113,9 +147,28 @@ export function renderToCanvas(
         ctx.fillStyle = s.fillColor
         ctx.strokeStyle = s.borderColor
         ctx.lineWidth = s.borderWidth
-        if (s.cornerRadius > 0) {
+        if (s.shapeType === 'circle' || s.shapeType === 'ellipse') {
           ctx.beginPath()
-          ctx.roundRect(0, 0, obj.width, obj.height, s.cornerRadius)
+          ctx.ellipse(obj.width / 2, obj.height / 2, s.shapeType === 'circle' ? Math.min(obj.width, obj.height) / 2 : obj.width / 2, s.shapeType === 'circle' ? Math.min(obj.width, obj.height) / 2 : obj.height / 2, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+        } else if (s.shapeType === 'triangle' || s.shapeType === 'polygon') {
+          const sides = s.shapeType === 'triangle' ? 3 : 6
+          const radius = Math.min(obj.width, obj.height) / 2
+          ctx.beginPath()
+          for (let index = 0; index < sides; index += 1) {
+            const angle = -Math.PI / 2 + index * Math.PI * 2 / sides
+            const x = obj.width / 2 + Math.cos(angle) * radius
+            const y = obj.height / 2 + Math.sin(angle) * radius
+            if (index === 0) ctx.moveTo(x, y)
+            else ctx.lineTo(x, y)
+          }
+          ctx.closePath()
+          ctx.fill()
+          ctx.stroke()
+        } else if (s.shapeType === 'roundedRectangle' || s.cornerRadius > 0) {
+          ctx.beginPath()
+          ctx.roundRect(0, 0, obj.width, obj.height, s.shapeType === 'roundedRectangle' ? Math.max(s.cornerRadius, 12) : s.cornerRadius)
           ctx.fill()
           ctx.stroke()
         } else {
@@ -141,16 +194,36 @@ export function renderToCanvas(
       }
       case 'image': {
         const img = obj as ImageObject
-        ctx.strokeStyle = '#999'
-        ctx.lineWidth = 1
-        ctx.setLineDash([4, 4])
-        ctx.strokeRect(0, 0, obj.width, obj.height)
-        ctx.setLineDash([])
-        ctx.fillStyle = '#999'
-        ctx.font = '11px Arial'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText('[Image]', obj.width / 2, obj.height / 2)
+        const loadedImage = loadedImages.get(obj.id)
+        if (loadedImage) {
+          let drawX = 0
+          let drawY = 0
+          let drawWidth = obj.width
+          let drawHeight = obj.height
+          let sourceX = 0
+          let sourceY = 0
+          let sourceWidth = loadedImage.naturalWidth
+          let sourceHeight = loadedImage.naturalHeight
+          if (img.fitMode === 'cover') {
+            const targetRatio = obj.width / obj.height
+            const sourceRatio = loadedImage.naturalWidth / loadedImage.naturalHeight
+            if (sourceRatio > targetRatio) sourceWidth = loadedImage.naturalHeight * targetRatio
+            else sourceHeight = loadedImage.naturalWidth / targetRatio
+            sourceX = (loadedImage.naturalWidth - sourceWidth) * Math.max(0, Math.min(100, img.cropX ?? 50)) / 100
+            sourceY = (loadedImage.naturalHeight - sourceHeight) * Math.max(0, Math.min(100, img.cropY ?? 50)) / 100
+          } else if (img.fitMode !== 'stretch' && img.maintainAspectRatio) {
+            const scale = Math.min(obj.width / loadedImage.naturalWidth, obj.height / loadedImage.naturalHeight)
+            drawWidth = loadedImage.naturalWidth * scale
+            drawHeight = loadedImage.naturalHeight * scale
+            drawX = (obj.width - drawWidth) / 2
+            drawY = (obj.height - drawHeight) / 2
+          }
+          ctx.save()
+          ctx.translate(img.flipHorizontal ? obj.width : 0, img.flipVertical ? obj.height : 0)
+          ctx.scale(img.flipHorizontal ? -1 : 1, img.flipVertical ? -1 : 1)
+          ctx.drawImage(loadedImage, sourceX, sourceY, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight)
+          ctx.restore()
+        }
         break
       }
       case 'datetime': {
@@ -201,7 +274,7 @@ export async function renderToPNG(
   dpi: number,
   unit: string
 ): Promise<string> {
-  const canvas = renderToCanvas(objects, width, height, dpi, unit)
+  const canvas = await renderToCanvas(objects, width, height, dpi, unit)
   return canvas.toDataURL('image/png')
 }
 
@@ -213,7 +286,7 @@ export async function renderToPDF(
   unit: string,
   templateName: string
 ): Promise<Blob> {
-  const canvas = renderToCanvas(objects, width, height, dpi, unit)
+  const canvas = await renderToCanvas(objects, width, height, dpi, unit)
   const imgDataUrl = canvas.toDataURL('image/png')
   const imgData = imgDataUrl.split(',')[1]
 

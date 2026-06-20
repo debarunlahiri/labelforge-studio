@@ -73,6 +73,7 @@ const api = {
     getPath: (name: string) => ipcRenderer.invoke('app:getPath', name),
     selectFile: (options: any) => ipcRenderer.invoke('app:selectFile', options),
     readFile: (filePath: string) => ipcRenderer.invoke('app:readFile', filePath),
+    saveFile: (options: any) => ipcRenderer.invoke('app:saveFile', options),
   },
 }
 

@@ -30,6 +30,7 @@ async function loadWasmBinary(): Promise<Uint8Array> {
         path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
       ]
     : [
+        path.join(process.resourcesPath, 'sql-wasm.wasm'),
         path.join(appPath, 'sql-wasm.wasm'),
         path.join(appPath, 'dist-electron', 'sql-wasm.wasm'),
         path.join(__dirname, 'sql-wasm.wasm'),

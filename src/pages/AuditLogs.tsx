@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import PageHero from '../components/PageHero'
+import { faShieldHalved } from '@fortawesome/free-solid-svg-icons'
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState<any[]>([])
@@ -25,15 +27,20 @@ export default function AuditLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Audit Logs</h1>
+      <PageHero
+        eyebrow="System activity"
+        title="Audit Logs"
+        description="Inspect recorded actions and operational changes across LabelForge."
+        icon={faShieldHalved}
+        actions={
         <button
           onClick={loadLogs}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+          className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
         >
           Refresh
         </button>
-      </div>
+        }
+      />
 
       <div>
         <input

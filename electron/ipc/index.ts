@@ -346,5 +346,33 @@ export function registerIpcHandlers(): void {
       return null
     }
   })
+  ipcMain.handle('app:saveFile', async (_event, options: any) => {
+    try {
+      const fs = await import('fs')
+      let filePath = options?.filePath as string | undefined
+
+      if (!filePath || options?.showDialog) {
+        const result = await dialog.showSaveDialog({
+          title: options?.title || 'Save File',
+          defaultPath: options?.defaultPath,
+          filters: options?.filters || [],
+        })
+        if (result.canceled || !result.filePath) {
+          return { success: false, canceled: true }
+        }
+        filePath = result.filePath
+      }
+
+      const requiredExtension = options?.extension as string | undefined
+      if (requiredExtension && !filePath.toLowerCase().endsWith(requiredExtension.toLowerCase())) {
+        filePath += requiredExtension
+      }
+
+      fs.writeFileSync(filePath, String(options?.content ?? ''), 'utf-8')
+      return { success: true, filePath }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
 
   }

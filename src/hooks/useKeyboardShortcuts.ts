@@ -5,6 +5,7 @@ interface KeyboardShortcutHandlers {
   onRedo: () => void
   onDelete: () => void
   onSave: () => void
+  onSaveAs?: () => void
   onCopy: () => void
   onPaste: () => void
   onCut?: () => void
@@ -19,6 +20,16 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       const key = e.key.toLowerCase()
+      const isZoomInKey =
+        e.code === 'Equal' ||
+        e.code === 'NumpadAdd' ||
+        key === '=' ||
+        key === '+'
+      const isZoomOutKey =
+        e.code === 'Minus' ||
+        e.code === 'NumpadSubtract' ||
+        key === '-' ||
+        key === '_'
       const isInputFocused =
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -47,7 +58,8 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
 
       if (mod && key === 's') {
         e.preventDefault()
-        handlers.onSave()
+        if (e.shiftKey) handlers.onSaveAs?.()
+        else handlers.onSave()
         return
       }
 
@@ -81,14 +93,16 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         return
       }
 
-      if (mod && (key === '=' || key === '+')) {
+      if (mod && isZoomInKey) {
         e.preventDefault()
+        e.stopPropagation()
         handlers.onZoomIn()
         return
       }
 
-      if (mod && key === '-') {
+      if (mod && isZoomOutKey) {
         e.preventDefault()
+        e.stopPropagation()
         handlers.onZoomOut()
         return
       }
