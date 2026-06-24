@@ -530,7 +530,52 @@ export function renderToEPL(
   width: number,
   height: number
 ): string {
-  return ''
+  const dpi = 203
+  const dotWidth = convertToDots(width, 'mm', dpi)
+  const dotHeight = convertToDots(height, 'mm', dpi)
+  let epl = 'N\n'
+  epl += `q${dotWidth}\n`
+  epl += `Q${dotHeight},24\n`
+
+  for (const obj of objects) {
+    if (!obj.visible) continue
+    const x = Math.round(obj.x)
+    const y = Math.round(obj.y)
+
+    switch (obj.type) {
+      case 'text': {
+        const text = (obj as TextObject).value.replace(/"/g, "'").replace(/\r?\n/g, ' ')
+        epl += `A${x},${y},${rotationToEPL(obj.rotation)},4,1,1,N,"${text}"\n`
+        break
+      }
+      case 'barcode': {
+        const barcode = obj as BarcodeObject
+        const humanReadable = barcode.showHumanReadable ? 'B' : 'N'
+        const value = barcode.value.replace(/"/g, "'")
+        epl += `B${x},${y},${rotationToEPL(obj.rotation)},1,${barcode.moduleWidth || 2},2,${Math.max(40, Math.round(barcode.barcodeHeight || obj.height))},${humanReadable},"${value}"\n`
+        break
+      }
+      case 'qrcode': {
+        const qr = obj as QRCodeObject
+        epl += `b${x},${y},Q,s${Math.max(3, Math.round(Math.min(obj.width, obj.height) / 24))},"${qr.value.replace(/"/g, "'")}"\n`
+        break
+      }
+      case 'shape': {
+        const shape = obj as ShapeObject
+        const lineWidth = Math.max(1, Math.round(shape.borderWidth || 1))
+        epl += `X${x},${y},${lineWidth},${Math.round(obj.width)},${Math.round(obj.height)}\n`
+        break
+      }
+      case 'line': {
+        const line = obj as LineObject
+        epl += `LO${x},${y},${Math.max(1, Math.round(Math.abs(line.endX || obj.width || 1)))},${Math.max(1, Math.round(line.lineThickness || 1))}\n`
+        break
+      }
+    }
+  }
+
+  epl += 'P1\n'
+  return epl
 }
 
 export function renderToTSPL(
@@ -538,5 +583,57 @@ export function renderToTSPL(
   width: number,
   height: number
 ): string {
-  return ''
+  let tspl = `SIZE ${width.toFixed(1)} mm, ${height.toFixed(1)} mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nCLS\n`
+
+  for (const obj of objects) {
+    if (!obj.visible) continue
+    const x = Math.round(obj.x)
+    const y = Math.round(obj.y)
+
+    switch (obj.type) {
+      case 'text': {
+        const text = (obj as TextObject).value.replace(/"/g, "'").replace(/\r?\n/g, ' ')
+        tspl += `TEXT ${x},${y},"0",${rotationToDegrees(obj.rotation)},1,1,"${text}"\n`
+        break
+      }
+      case 'barcode': {
+        const barcode = obj as BarcodeObject
+        const text = barcode.value.replace(/"/g, "'")
+        tspl += `BARCODE ${x},${y},"128",${Math.max(40, Math.round(barcode.barcodeHeight || obj.height))},${barcode.showHumanReadable ? 1 : 0},${rotationToDegrees(obj.rotation)},${barcode.moduleWidth || 2},2,"${text}"\n`
+        break
+      }
+      case 'qrcode': {
+        const qr = obj as QRCodeObject
+        const text = qr.value.replace(/"/g, "'")
+        tspl += `QRCODE ${x},${y},M,${Math.max(3, Math.round(Math.min(obj.width, obj.height) / 20))},A,${rotationToDegrees(obj.rotation)},"${text}"\n`
+        break
+      }
+      case 'shape': {
+        const shape = obj as ShapeObject
+        tspl += `BOX ${x},${y},${x + Math.round(obj.width)},${y + Math.round(obj.height)},${Math.max(1, Math.round(shape.borderWidth || 1))}\n`
+        break
+      }
+      case 'line': {
+        const line = obj as LineObject
+        tspl += `BAR ${x},${y},${Math.max(1, Math.round(Math.abs(line.endX || obj.width || 1)))},${Math.max(1, Math.round(line.lineThickness || 1))}\n`
+        break
+      }
+    }
+  }
+
+  tspl += 'PRINT 1\n'
+  return tspl
+}
+
+function rotationToDegrees(rotation: number): 0 | 90 | 180 | 270 {
+  const normalized = ((Math.round(rotation / 90) * 90) % 360 + 360) % 360
+  return (normalized === 90 || normalized === 180 || normalized === 270 ? normalized : 0) as 0 | 90 | 180 | 270
+}
+
+function rotationToEPL(rotation: number): 0 | 1 | 2 | 3 {
+  const degrees = rotationToDegrees(rotation)
+  if (degrees === 90) return 1
+  if (degrees === 180) return 2
+  if (degrees === 270) return 3
+  return 0
 }

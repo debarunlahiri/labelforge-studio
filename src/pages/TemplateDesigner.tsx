@@ -847,6 +847,14 @@ export default function TemplateDesigner() {
     }
   }, [confirm, selectedObjectIds, deleteSelectedObjects])
 
+  const handleOpenPrintPreview = useCallback(() => {
+    if (!currentTemplate?.id) {
+      alert('Save this template before opening print preview.')
+      return
+    }
+    navigate(`/app/templates/${currentTemplate.id}/preview`)
+  }, [currentTemplate?.id, navigate])
+
   const handleAlign = useCallback((action: string) => {
     if (!selectedObjectId) return
     const obj = objects.find(o => o.id === selectedObjectId)
@@ -1519,7 +1527,7 @@ export default function TemplateDesigner() {
         onSave={() => { void handleSave(false) }}
         onSaveAs={() => { void handleSave(false, true) }}
         onExport={() => { void handleSave(false, true) }}
-        onPrint={() => navigate(`/app/templates/${currentTemplate?.id}/preview`)}
+        onPrint={handleOpenPrintPreview}
         isSaving={isSaving}
         onAddObject={handleAddObject}
         onToggleGrid={toggleGrid}
