@@ -29,6 +29,10 @@ interface FieldMapping {
   objectId: string | null
 }
 
+function stopDesignerInputPropagation(event: React.SyntheticEvent) {
+  event.stopPropagation()
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getEmptyConfig(type: DataSourceType): Record<string, any> {
   switch (type) {
@@ -539,7 +543,12 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
   }
 
   return (
-    <div className="designer-side-panel flex w-[clamp(300px,30vw,384px)] min-w-0 shrink-0 flex-col overflow-y-auto border-l border-[var(--border-color)] bg-slate-50">
+    <div
+      className="designer-side-panel flex w-[clamp(300px,30vw,384px)] min-w-0 shrink-0 flex-col overflow-y-auto border-l border-[var(--border-color)] bg-slate-50"
+      onKeyDownCapture={stopDesignerInputPropagation}
+      onMouseDownCapture={stopDesignerInputPropagation}
+      onPointerDownCapture={stopDesignerInputPropagation}
+    >
       <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-[var(--border-color)] bg-white px-4 py-3">
         <span className="min-w-0 whitespace-normal break-words text-sm font-semibold text-slate-900">Data Sources</span>
         <button

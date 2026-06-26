@@ -145,13 +145,94 @@ export async function sendRawToPrinter(printer: any, payload: string): Promise<v
   if (!printer.name) throw new Error('Printer name is required for driver printing')
 
   if (process.platform === 'win32') {
-    await runWithStdin('powershell.exe', ['-NoProfile', '-Command', `$p=[Console]::In.ReadToEnd(); Add-Content -Path "\\\\localhost\\${printer.name}" -Value $p -NoNewline`], body)
+    await sendRawToWindowsPrinter(printer.driver_name || printer.name, body)
     return
   }
 
   const command = process.platform === 'darwin' || process.platform === 'linux' ? 'lp' : 'lpr'
   const args = command === 'lp' ? ['-d', printer.name, '-o', 'raw'] : ['-P', printer.name]
   await runWithStdin(command, args, body)
+}
+
+async function sendRawToWindowsPrinter(printerName: string, payload: string): Promise<void> {
+  const script = String.raw`
+param([string]$PrinterName)
+
+$source = @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class RawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+  private class DOCINFOA {
+    [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+  }
+
+  [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+  private static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+  [DllImport("winspool.Drv", SetLastError = true, ExactSpelling = true)]
+  private static extern bool ClosePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+  private static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOA di);
+
+  [DllImport("winspool.Drv", SetLastError = true, ExactSpelling = true)]
+  private static extern bool EndDocPrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true, ExactSpelling = true)]
+  private static extern bool StartPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true, ExactSpelling = true)]
+  private static extern bool EndPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true, ExactSpelling = true)]
+  private static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+  public static void SendBytes(string printerName, byte[] bytes) {
+    IntPtr printerHandle;
+    if (!OpenPrinter(printerName, out printerHandle, IntPtr.Zero)) {
+      throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not open printer: " + printerName);
+    }
+
+    IntPtr unmanagedBytes = IntPtr.Zero;
+    try {
+      var docInfo = new DOCINFOA { pDocName = "LabelForge Studio Raw Label", pDataType = "RAW" };
+      if (!StartDocPrinter(printerHandle, 1, docInfo)) {
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not start print job.");
+      }
+      if (!StartPagePrinter(printerHandle)) {
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not start print page.");
+      }
+
+      unmanagedBytes = Marshal.AllocCoTaskMem(bytes.Length);
+      Marshal.Copy(bytes, 0, unmanagedBytes, bytes.Length);
+
+      int written;
+      if (!WritePrinter(printerHandle, unmanagedBytes, bytes.Length, out written) || written != bytes.Length) {
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not write raw data to printer.");
+      }
+    } finally {
+      if (unmanagedBytes != IntPtr.Zero) Marshal.FreeCoTaskMem(unmanagedBytes);
+      EndPagePrinter(printerHandle);
+      EndDocPrinter(printerHandle);
+      ClosePrinter(printerHandle);
+    }
+  }
+}
+'@
+
+Add-Type -TypeDefinition $source
+$stream = [Console]::OpenStandardInput()
+$memory = New-Object System.IO.MemoryStream
+$stream.CopyTo($memory)
+[RawPrinter]::SendBytes($PrinterName, $memory.ToArray())
+`
+
+  await runWithStdin('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script, printerName], payload)
 }
 
 function sendToSocket(host: string, port: number, payload: string): Promise<void> {

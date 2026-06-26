@@ -41,6 +41,10 @@ type SmartGuide = {
   end: number
 }
 
+type RotationGuide = {
+  points: number[]
+}
+
 type Bounds = {
   x: number
   y: number
@@ -57,6 +61,9 @@ const SNAP_TOLERANCE = 6
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const ZOOM_STEP = 0.1
+const ROTATE_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.64-6.36'/%3E%3Cpath d='M21 3v6h-6'/%3E%3C/svg%3E") 12 12, alias`
+const ROTATION_SNAPS = [0, 45, 90, 135, 180, 225, 270, 315]
+const ROTATION_SNAP_TOLERANCE = 6
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))))
@@ -117,6 +124,7 @@ export default function TemplateDesigner() {
   const [autoSaveIntervalMs, setAutoSaveIntervalMs] = useState(30000)
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle')
   const [smartGuides, setSmartGuides] = useState<SmartGuide[]>([])
+  const [rotationGuides, setRotationGuides] = useState<RotationGuide[]>([])
   const [contextMenu, setContextMenu] = useState<DesignerContextMenuState>(null)
   const [layerFlashObjectId, setLayerFlashObjectId] = useState<string | null>(null)
   const [workspaceScroll, setWorkspaceScroll] = useState({ left: 0, top: 0 })
@@ -697,6 +705,7 @@ export default function TemplateDesigner() {
         setShowArtboard(true)
         setShowDataSource(false)
         setSmartGuides([])
+        setRotationGuides([])
       }
     }
   }
@@ -756,6 +765,7 @@ export default function TemplateDesigner() {
       }
     }
     setSmartGuides([])
+    setRotationGuides([])
     setContextMenu({
       x: clientX,
       y: clientY,
@@ -789,17 +799,20 @@ export default function TemplateDesigner() {
   const handleStageMouseDown = useCallback((e: any) => {
     if (e.evt.button === 0) {
       setContextMenu(null)
+      setRotationGuides([])
     }
   }, [])
 
   const handleStageContextMenu = useCallback((e: any) => {
     e.evt.preventDefault()
     e.cancelBubble = true
+    setRotationGuides([])
     openContextMenuForNode(e.target, e.evt)
   }, [openContextMenuForNode])
 
   const handleObjectClick = (objId: string, multiSelect: boolean) => {
     setContextMenu(null)
+    setRotationGuides([])
     if (multiSelect) {
       toggleObjectSelection(objId)
     } else {
@@ -982,6 +995,75 @@ export default function TemplateDesigner() {
     return { x: nextX, y: nextY, guides }
   }, [canvasHeight, canvasWidth, getObjectBounds, objects, zoom])
 
+  const getSelectionBounds = useCallback((): Bounds | null => {
+    const bounds = selectedObjectIds
+      .map((objectId) => objects.find((object) => object.id === objectId))
+      .filter((object): object is LabelObject => Boolean(object))
+      .map(getObjectBounds)
+
+    if (bounds.length === 0) return null
+
+    const left = Math.min(...bounds.map((bound) => bound.x))
+    const top = Math.min(...bounds.map((bound) => bound.y))
+    const right = Math.max(...bounds.map((bound) => bound.x + bound.width))
+    const bottom = Math.max(...bounds.map((bound) => bound.y + bound.height))
+
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    }
+  }, [getObjectBounds, objects, selectedObjectIds])
+
+  const getNearestRotationSnap = useCallback((rotation: number): number | null => {
+    const normalized = ((rotation % 360) + 360) % 360
+    let nearestAngle = ROTATION_SNAPS[0]
+    let nearestDistance = Number.POSITIVE_INFINITY
+
+    ROTATION_SNAPS.forEach((angle) => {
+      const rawDistance = Math.abs(normalized - angle)
+      const distance = Math.min(rawDistance, 360 - rawDistance)
+      if (distance < nearestDistance) {
+        nearestAngle = angle
+        nearestDistance = distance
+      }
+    })
+
+    return nearestDistance <= ROTATION_SNAP_TOLERANCE ? nearestAngle : null
+  }, [])
+
+  const handleTransform = useCallback(() => {
+    const transformer = transformerRef.current
+    if (!transformer || transformer.getActiveAnchor?.() !== 'rotater') {
+      setRotationGuides([])
+      return
+    }
+
+    const snapAngle = getNearestRotationSnap(transformer.rotation())
+    const bounds = getSelectionBounds()
+    if (snapAngle === null || !bounds) {
+      setRotationGuides([])
+      return
+    }
+
+    const centerX = bounds.x + bounds.width / 2
+    const centerY = bounds.y + bounds.height / 2
+    const radians = snapAngle * Math.PI / 180
+    const length = Math.hypot(canvasWidth, canvasHeight) * 1.5
+    const dx = Math.cos(radians) * length
+    const dy = Math.sin(radians) * length
+
+    setRotationGuides([{
+      points: [
+        centerX - dx,
+        centerY - dy,
+        centerX + dx,
+        centerY + dy,
+      ],
+    }])
+  }, [canvasHeight, canvasWidth, getNearestRotationSnap, getSelectionBounds])
+
   const snapNodePosition = useCallback((obj: LabelObject, node: any) => {
     if (!snapToGrid) {
       setSmartGuides([])
@@ -1073,6 +1155,7 @@ export default function TemplateDesigner() {
   const handleTransformEnd = useCallback(() => {
     const transformer = transformerRef.current
     if (!transformer) return
+    setRotationGuides([])
 
     transformer.nodes().forEach((node: any) => {
       const objectId = String(node.id()).replace(/^object-/, '')
@@ -1660,6 +1743,16 @@ export default function TemplateDesigner() {
                           listening={false}
                         />
                       ))}
+                      {rotationGuides.map((guide, index) => (
+                        <Line
+                          key={`rotation-${index}`}
+                          points={guide.points}
+                          stroke="#0ea5e9"
+                          strokeWidth={1 / zoom}
+                          dash={[6 / zoom, 4 / zoom]}
+                          listening={false}
+                        />
+                      ))}
                       <Transformer
                         ref={transformerRef}
                         rotateEnabled
@@ -1681,6 +1774,16 @@ export default function TemplateDesigner() {
                         anchorFill="#ffffff"
                         anchorStrokeWidth={1 / zoom}
                         rotateAnchorOffset={24 / zoom}
+                        rotateAnchorCursor={ROTATE_CURSOR}
+                        rotationSnaps={ROTATION_SNAPS}
+                        rotationSnapTolerance={ROTATION_SNAP_TOLERANCE}
+                        anchorStyleFunc={(anchor: any) => {
+                          if (!anchor.hasName('rotater')) return
+                          anchor.cornerRadius(anchor.width() / 2)
+                          anchor.fill('#2563eb')
+                          anchor.stroke('#ffffff')
+                        }}
+                        onTransform={handleTransform}
                         onTransformEnd={handleTransformEnd}
                         boundBoxFunc={(oldBox, newBox) => {
                           if (Math.abs(newBox.width) < 4 || Math.abs(newBox.height) < 4) {
@@ -1706,6 +1809,8 @@ export default function TemplateDesigner() {
               <textarea
                 ref={inlineTextAreaRef}
                 value={inlineTextEditor.value}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
                 onSelect={(event) => setTextSelection({
                   start: event.currentTarget.selectionStart,
                   end: event.currentTarget.selectionEnd,
@@ -1717,6 +1822,7 @@ export default function TemplateDesigner() {
                 }}
                 onBlur={() => finishInlineTextEdit(true)}
                 onKeyDown={(event) => {
+                  event.stopPropagation()
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     finishInlineTextEdit(false)

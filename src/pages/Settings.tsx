@@ -443,17 +443,6 @@ export default function Settings() {
       </section>
 
       <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500">
-        <div>
-          This software was designed and developed by{' '}
-          <a
-            href="https://www.linkedin.com/in/debarun-lahiri-a67875126/"
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-          >
-            Debarun Lahiri
-          </a>
-        </div>
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
           <span>LabelForge Studio v{appVersion}</span>
           <span aria-hidden="true">•</span>

@@ -10,6 +10,10 @@ interface ArtboardPanelProps {
 const inputClass =
   'h-9 w-full min-w-0 rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs text-slate-900 transition-colors focus:border-blue-400 focus:bg-white'
 
+function stopDesignerInputPropagation(event: React.SyntheticEvent) {
+  event.stopPropagation()
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block min-w-0">
@@ -26,7 +30,12 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
   }
 
   return (
-    <aside className="designer-side-panel flex w-[380px] min-w-0 shrink-0 flex-col border-l border-[var(--border-color)] bg-slate-50">
+    <aside
+      className="designer-side-panel flex w-[380px] min-w-0 shrink-0 flex-col border-l border-[var(--border-color)] bg-slate-50"
+      onKeyDownCapture={stopDesignerInputPropagation}
+      onMouseDownCapture={stopDesignerInputPropagation}
+      onPointerDownCapture={stopDesignerInputPropagation}
+    >
       <div className="flex min-h-[72px] shrink-0 items-center gap-3 border-b border-[var(--border-color)] bg-white px-5 py-4">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700">
           <FontAwesomeIcon icon={faExpand} />

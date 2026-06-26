@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faAlignCenter,
@@ -83,13 +84,31 @@ function NumberField({
   onChange: (value: number) => void
   step?: number
 }) {
+  const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? Number(value.toFixed(2)) : 0))
+
+  useEffect(() => {
+    setDraftValue(String(Number.isFinite(value) ? Number(value.toFixed(2)) : 0))
+  }, [value])
+
+  const commitValue = () => {
+    const nextValue = Number(draftValue)
+    setDraftValue(String(Number.isFinite(nextValue) ? Number(nextValue.toFixed(2)) : Number(value.toFixed(2))))
+  }
+
   return (
     <Field label={label}>
       <input
         type="number"
         step={step}
-        value={Number.isFinite(value) ? Number(value.toFixed(2)) : 0}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={draftValue}
+        onBlur={commitValue}
+        onChange={(e) => {
+          const nextValue = e.target.value
+          setDraftValue(nextValue)
+          if (nextValue === '' || nextValue === '-' || nextValue === '.' || nextValue === '-.') return
+          const numericValue = Number(nextValue)
+          if (Number.isFinite(numericValue)) onChange(numericValue)
+        }}
         className={inputClass}
       />
     </Field>
@@ -107,6 +126,17 @@ function CompactNumberField({
   onChange: (value: number) => void
   step?: number
 }) {
+  const [draftValue, setDraftValue] = useState(String(Number.isFinite(value) ? Number(value.toFixed(2)) : 0))
+
+  useEffect(() => {
+    setDraftValue(String(Number.isFinite(value) ? Number(value.toFixed(2)) : 0))
+  }, [value])
+
+  const commitValue = () => {
+    const nextValue = Number(draftValue)
+    setDraftValue(String(Number.isFinite(nextValue) ? Number(nextValue.toFixed(2)) : Number(value.toFixed(2))))
+  }
+
   return (
     <label className="flex h-8 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 focus-within:border-blue-400 focus-within:bg-white">
       <span className="flex h-full w-8 shrink-0 items-center justify-center border-r border-slate-200 text-[10px] font-semibold text-slate-500">
@@ -115,8 +145,15 @@ function CompactNumberField({
       <input
         type="number"
         step={step}
-        value={Number.isFinite(value) ? Number(value.toFixed(2)) : 0}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={draftValue}
+        onBlur={commitValue}
+        onChange={(e) => {
+          const nextValue = e.target.value
+          setDraftValue(nextValue)
+          if (nextValue === '' || nextValue === '-' || nextValue === '.' || nextValue === '-.') return
+          const numericValue = Number(nextValue)
+          if (Number.isFinite(numericValue)) onChange(numericValue)
+        }}
         className="h-full min-w-0 flex-1 bg-transparent px-2 text-xs text-slate-900 outline-none"
       />
     </label>
@@ -270,6 +307,10 @@ function getItemTypeName(object: LabelObject) {
   return names[object.type]
 }
 
+function stopDesignerInputPropagation(event: React.SyntheticEvent) {
+  event.stopPropagation()
+}
+
 function SymbologySelect({
   value,
   groups,
@@ -316,7 +357,12 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
   }
 
   return (
-    <aside className="designer-side-panel flex w-[380px] min-w-0 shrink-0 flex-col border-l border-[var(--border-color)] bg-slate-50">
+    <aside
+      className="designer-side-panel flex w-[380px] min-w-0 shrink-0 flex-col border-l border-[var(--border-color)] bg-slate-50"
+      onKeyDownCapture={stopDesignerInputPropagation}
+      onMouseDownCapture={stopDesignerInputPropagation}
+      onPointerDownCapture={stopDesignerInputPropagation}
+    >
       <div className="flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-[var(--border-color)] bg-white px-5 py-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-blue-700">
@@ -656,4 +702,3 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
     </aside>
   )
 }
-import { useState } from 'react'
