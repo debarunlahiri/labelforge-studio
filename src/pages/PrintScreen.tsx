@@ -4,6 +4,7 @@ import PrintTimeInput from './PrintTimeInput'
 import SearchableSelect from '../components/SearchableSelect'
 import PageHero from '../components/PageHero'
 import { faPrint } from '@fortawesome/free-solid-svg-icons'
+import { renderToPNG } from '../utils/labelRenderer'
 
 interface PrintJob {
   id: string
@@ -73,15 +74,20 @@ export default function PrintScreen() {
     setIsPrinting(true)
     try {
       const template = templates.find((t: any) => t.id === selectedTemplate)
+      const printer = printers.find((p: any) => p.id === selectedPrinter)
       const templateVersions = await window.electronAPI?.templateVersions.list(selectedTemplate) || []
-      const versionId = template?.current_version_id || templateVersions[0]?.id
-      if (!versionId) throw new Error('Save this design once before printing')
-      const result = await window.electronAPI?.printJobs.create({
-        template_id: selectedTemplate,
-        template_version_id: versionId,
-        printer_id: selectedPrinter,
-        requested_by: 'current_user',
+      const version = templateVersions.find((item: any) => item.id === template?.current_version_id) || templateVersions[0]
+      if (!template || !version) throw new Error('Save this design once before printing')
+      const canvas = JSON.parse(version.template_json || '{}')
+      const objects = Array.isArray(canvas.objects) ? canvas.objects : []
+      const dataUrl = await renderToPNG(objects, template.label_width, template.label_height, template.dpi, template.unit)
+      const result = await window.electronAPI?.app.printImage({
+        dataUrl,
+        printerName: printer?.driver_name || printer?.name,
         copies,
+        width: template.label_width,
+        height: template.label_height,
+        unit: template.unit,
       })
       if (result?.success === false) {
         throw new Error(result.error || 'Printer rejected the job')

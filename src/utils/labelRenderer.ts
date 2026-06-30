@@ -10,6 +10,8 @@ import type {
   CounterObject,
 } from '../types'
 import { styleAt } from '../designer/richText'
+import bwipjs from 'bwip-js'
+import { getBwipSymbology, isQrFamilySymbology, symbologyByValue } from '../designer/symbologies'
 
 function convertToDots(value: number, unit: string, dpi: number): number {
   switch (unit) {
@@ -34,6 +36,69 @@ function loadImage(source: string): Promise<HTMLImageElement | null> {
     image.onerror = () => resolve(null)
     image.src = source
   })
+}
+
+function normalizeBwipColor(color?: string): string {
+  return (color || '#000000').replace(/^#/, '') || '000000'
+}
+
+function getLineVisualHeight(line: LineObject): number {
+  return Math.max(12, line.lineThickness || 1)
+}
+
+async function renderBarcodeImage(
+  barcodeType: string,
+  value: string,
+  width: number,
+  height: number,
+  options: {
+    barcodeHeight?: number
+    moduleWidth?: number
+    showHumanReadable?: boolean
+    quietZone?: number
+    foregroundColor?: string
+    backgroundColor?: string
+    errorCorrectionLevel?: string
+  } = {}
+): Promise<HTMLImageElement | null> {
+  if (!value) return null
+  const symbology = symbologyByValue[barcodeType]
+  if (symbology?.supported === false) return null
+
+  const render = async (bwipType: string) => {
+    const barcodeCanvas = document.createElement('canvas')
+    const bwipOptions: any = {
+      bcid: bwipType,
+      text: value,
+      scale: 3,
+      width,
+      height: options.barcodeHeight || height,
+      includetext: false,
+      barcolor: normalizeBwipColor(options.foregroundColor),
+      backgroundcolor: normalizeBwipColor(options.backgroundColor || '#FFFFFF'),
+    }
+    if (options.moduleWidth) bwipOptions.modulewidth = options.moduleWidth
+    if (options.quietZone) bwipOptions.padding = options.quietZone
+    if (bwipType === 'qrcode' && options.errorCorrectionLevel) {
+      bwipOptions.eclevel = options.errorCorrectionLevel
+    }
+    bwipjs.toCanvas(barcodeCanvas, bwipOptions)
+    return loadImage(barcodeCanvas.toDataURL('image/png'))
+  }
+
+  const bwipType = getBwipSymbology(barcodeType)
+  try {
+    return await render(bwipType)
+  } catch {
+    if (isQrFamilySymbology(barcodeType) && bwipType !== 'qrcode') {
+      try {
+        return await render('qrcode')
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
 }
 
 export async function renderToCanvas(
@@ -63,10 +128,52 @@ export async function renderToCanvas(
     const imageObject = object as ImageObject
     loadedImages.set(object.id, await loadImage(imageObject.source))
   }))
+  const renderedBarcodes = new Map<string, HTMLImageElement | null>()
+  await Promise.all(objects.filter((object) => object.type === 'barcode' || object.type === 'qrcode').map(async (object) => {
+    if (object.type === 'barcode') {
+      const barcode = object as BarcodeObject
+      renderedBarcodes.set(object.id, await renderBarcodeImage(barcode.barcodeType, barcode.value, object.width, object.height, {
+        barcodeHeight: barcode.barcodeHeight,
+        moduleWidth: barcode.moduleWidth,
+        showHumanReadable: barcode.showHumanReadable,
+        quietZone: barcode.quietZone,
+        foregroundColor: barcode.foregroundColor,
+        backgroundColor: barcode.backgroundColor,
+      }))
+    } else {
+      const qr = object as QRCodeObject
+      renderedBarcodes.set(object.id, await renderBarcodeImage(qr.barcodeType || 'QRCode', qr.value, object.width, object.height, {
+        quietZone: qr.quietZone,
+        foregroundColor: qr.foregroundColor,
+        backgroundColor: qr.backgroundColor,
+        errorCorrectionLevel: qr.errorCorrectionLevel,
+      }))
+    }
+  }))
 
   for (const obj of objects) {
     if (!obj.visible) continue
     ctx.save()
+    if (obj.type === 'line') {
+      const l = obj as LineObject
+      const lineHeight = getLineVisualHeight(l)
+      ctx.translate(obj.x + obj.width / 2, obj.y + lineHeight / 2)
+      ctx.rotate((obj.rotation * Math.PI) / 180)
+      ctx.globalAlpha = obj.opacity
+      ctx.strokeStyle = l.lineColor
+      ctx.lineWidth = l.lineThickness
+      if (l.lineStyle === 'dashed') {
+        ctx.setLineDash([8, 4])
+      } else if (l.lineStyle === 'dotted') {
+        ctx.setLineDash([2, 2])
+      }
+      ctx.beginPath()
+      ctx.moveTo(-obj.width / 2, 0)
+      ctx.lineTo(obj.width / 2, 0)
+      ctx.stroke()
+      ctx.restore()
+      continue
+    }
     ctx.translate(obj.x, obj.y)
     ctx.rotate((obj.rotation * Math.PI) / 180)
     ctx.globalAlpha = obj.opacity
@@ -115,17 +222,22 @@ export async function renderToCanvas(
       }
       case 'barcode': {
         const bc = obj as BarcodeObject
+        const foregroundColor = bc.foregroundColor || '#000000'
+        const showHumanReadable = bc.showHumanReadable ?? false
+        const humanReadableHeight = showHumanReadable ? 18 : 0
+        const barcodeAreaHeight = Math.max(1, obj.height - humanReadableHeight)
         ctx.fillStyle = bc.backgroundColor
         ctx.fillRect(0, 0, obj.width, obj.height)
-        ctx.fillStyle = bc.foregroundColor
-        ctx.font = `12px Arial`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(`[${bc.barcodeType}]`, obj.width / 2, (obj.height - (bc.showHumanReadable ? 16 : 0)) / 2)
-        if (bc.showHumanReadable) {
-          ctx.font = `10px Arial`
-          ctx.textBaseline = 'bottom'
-          ctx.fillText(bc.value, obj.width / 2, obj.height)
+        const barcodeImage = renderedBarcodes.get(obj.id)
+        if (barcodeImage) {
+          ctx.drawImage(barcodeImage, 0, 0, obj.width, barcodeAreaHeight)
+        }
+        if (showHumanReadable) {
+          ctx.fillStyle = foregroundColor
+          ctx.font = '10px Arial'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(bc.value, obj.width / 2, barcodeAreaHeight + humanReadableHeight / 2)
         }
         break
       }
@@ -133,13 +245,10 @@ export async function renderToCanvas(
         const qr = obj as QRCodeObject
         ctx.fillStyle = qr.backgroundColor
         ctx.fillRect(0, 0, obj.width, obj.height)
-        ctx.fillStyle = qr.foregroundColor
-        ctx.fillRect(8, 8, obj.width - 16, obj.height - 16)
-        ctx.fillStyle = '#FFFFFF'
-        ctx.font = `bold 14px Arial`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText('QR', obj.width / 2, obj.height / 2)
+        const qrImage = renderedBarcodes.get(obj.id)
+        if (qrImage) {
+          ctx.drawImage(qrImage, 0, 0, obj.width, obj.height)
+        }
         break
       }
       case 'shape': {
@@ -175,21 +284,6 @@ export async function renderToCanvas(
           ctx.fillRect(0, 0, obj.width, obj.height)
           ctx.strokeRect(0, 0, obj.width, obj.height)
         }
-        break
-      }
-      case 'line': {
-        const l = obj as LineObject
-        ctx.strokeStyle = l.lineColor
-        ctx.lineWidth = l.lineThickness
-        if (l.lineStyle === 'dashed') {
-          ctx.setLineDash([8, 4])
-        } else if (l.lineStyle === 'dotted') {
-          ctx.setLineDash([2, 2])
-        }
-        ctx.beginPath()
-        ctx.moveTo(l.startX, l.startY)
-        ctx.lineTo(l.endX, l.endY)
-        ctx.stroke()
         break
       }
       case 'image': {
@@ -278,6 +372,17 @@ export async function renderToPNG(
   return canvas.toDataURL('image/png')
 }
 
+export async function renderToJPEG(
+  objects: LabelObject[],
+  width: number,
+  height: number,
+  dpi: number,
+  unit: string
+): Promise<string> {
+  const canvas = await renderToCanvas(objects, width, height, dpi, unit)
+  return canvas.toDataURL('image/jpeg', 0.95)
+}
+
 export async function renderToPDF(
   objects: LabelObject[],
   width: number,
@@ -287,7 +392,7 @@ export async function renderToPDF(
   templateName: string
 ): Promise<Blob> {
   const canvas = await renderToCanvas(objects, width, height, dpi, unit)
-  const imgDataUrl = canvas.toDataURL('image/png')
+  const imgDataUrl = canvas.toDataURL('image/jpeg', 0.95)
   const imgData = imgDataUrl.split(',')[1]
 
   const widthInPt = unit === 'mm' ? width * 2.835 : unit === 'cm' ? width * 28.35 : unit === 'in' ? width * 72 : width * 0.75
@@ -305,49 +410,51 @@ function buildSimplePDF(
   pixelWidth: number,
   pixelHeight: number
 ): Uint8Array {
+  const encoder = new TextEncoder()
   const imgBytes = atob(imageData)
   const imgUint8 = new Uint8Array(imgBytes.length)
   for (let i = 0; i < imgBytes.length; i++) {
     imgUint8[i] = imgBytes.charCodeAt(i)
   }
 
-  const header = '%PDF-1.4\n'
-  const obj1 = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
-  const obj2 = '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
-  const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPt} ${heightPt}] /Contents 4 0 R /Resources << /XObject << /Img1 5 0 R >> >> >>\nendobj\n`
-
-  const contentStream = `q\n${widthPt} 0 0 ${heightPt} 0 0 cm\n/Img1 Do\nQ\n`
-  const obj4 = `4 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}endstream\nendobj\n`
-
-  const obj5 = `5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${pixelWidth} /Height ${pixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgUint8.length} >>\nstream\n`
-
-  const imageDataStr = String.fromCharCode(...imgUint8)
-
-  const obj6 = '6 0 obj\n<< /Producer (LabelForge Studio) >>\nendobj\n'
-
-  let pdf = header + obj1 + obj2 + obj3 + obj4 + obj5 + imageDataStr + '\nendstream\nendobj\n' + obj6
-
+  const chunks: Uint8Array[] = []
   const offsets: number[] = []
-  let pos = 0
-  const parts = pdf.split('\n')
-  let currentObj = 0
-  let currentOffset = 0
+  let byteLength = 0
 
-  for (let i = 1; i <= 6; i++) {
-    const marker = `${i} 0 obj`
-    const idx = pdf.indexOf(marker)
-    if (idx !== -1) {
-      offsets.push(idx)
-    }
+  const append = (chunk: string | Uint8Array) => {
+    const bytes = typeof chunk === 'string' ? encoder.encode(chunk) : chunk
+    chunks.push(bytes)
+    byteLength += bytes.length
+  }
+  const appendObject = (object: string | Uint8Array) => {
+    offsets.push(byteLength)
+    append(object)
   }
 
-  const xref = `xref\n0 7\n0000000000 65535 f \n${offsets[0].toString().padStart(10, '0')} 00000 n \n${offsets[1].toString().padStart(10, '0')} 00000 n \n${offsets[2].toString().padStart(10, '0')} 00000 n \n${offsets[3].toString().padStart(10, '0')} 00000 n \n${offsets[4].toString().padStart(10, '0')} 00000 n \n${offsets[5].toString().padStart(10, '0')} 00000 n \n`
-  const trailer = `trailer\n<< /Size 7 /Root 1 0 R /Info 6 0 R >>\nstartxref\n0\n%%EOF\n`
+  append('%PDF-1.4\n')
+  appendObject('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+  appendObject('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n')
+  appendObject(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPt.toFixed(2)} ${heightPt.toFixed(2)}] /Contents 4 0 R /Resources << /XObject << /Img1 5 0 R >> >> >>\nendobj\n`)
 
-  const fullPdf = pdf + xref + trailer
+  const contentStream = `q\n${widthPt.toFixed(2)} 0 0 ${heightPt.toFixed(2)} 0 0 cm\n/Img1 Do\nQ\n`
+  appendObject(`4 0 obj\n<< /Length ${encoder.encode(contentStream).length} >>\nstream\n${contentStream}endstream\nendobj\n`)
 
-  const encoder = new TextEncoder()
-  const pdfUint8 = encoder.encode(fullPdf)
+  offsets.push(byteLength)
+  append(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${pixelWidth} /Height ${pixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgUint8.length} >>\nstream\n`)
+  append(imgUint8)
+  append('\nendstream\nendobj\n')
+  appendObject('6 0 obj\n<< /Producer (LabelForge Studio) >>\nendobj\n')
+
+  const xrefOffset = byteLength
+  append(`xref\n0 7\n0000000000 65535 f \n${offsets.map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('')}`)
+  append(`trailer\n<< /Size 7 /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`)
+
+  const pdfUint8 = new Uint8Array(byteLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    pdfUint8.set(chunk, offset)
+    offset += chunk.length
+  }
   return pdfUint8
 }
 

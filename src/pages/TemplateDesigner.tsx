@@ -16,6 +16,7 @@ import ImageRenderer from '../designer/ImageRenderer'
 import ShapeRenderer from '../designer/ShapeRenderer'
 import RichTextRenderer from '../designer/RichTextRenderer'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { renderToJPEG, renderToPDF, renderToPNG } from '../utils/labelRenderer'
 import NewTemplateWizard from './template-designer/NewTemplateWizard'
 import ObjectContextMenu, { type ImageContextAction } from './template-designer/ObjectContextMenu'
 import DesignerStatusBar from './template-designer/DesignerStatusBar'
@@ -62,8 +63,21 @@ const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const ZOOM_STEP = 0.1
 const ROTATE_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.64-6.36'/%3E%3Cpath d='M21 3v6h-6'/%3E%3C/svg%3E") 12 12, alias`
+
+type ExportFormat = 'labelforge' | 'pdf' | 'jpeg' | 'png'
 const ROTATION_SNAPS = [0, 45, 90, 135, 180, 225, 270, 315]
 const ROTATION_SNAP_TOLERANCE = 6
+
+function getLineVisualHeight(line: LineObjType): number {
+  return Math.max(12, line.lineThickness || 1)
+}
+
+function getLineNodePosition(line: LineObjType) {
+  return {
+    x: line.x + line.width / 2,
+    y: line.y + getLineVisualHeight(line) / 2,
+  }
+}
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))))
@@ -554,6 +568,86 @@ export default function TemplateDesigner() {
     }
   }
 
+  const getSafeTemplateName = () => {
+    return currentTemplate?.name
+      .trim()
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+      .replace(/\s+/g, ' ')
+      || 'Untitled Label'
+  }
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+      reader.onerror = () => reject(reader.error || new Error('Could not read exported file data.'))
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  const saveBase64Export = async (base64Content: string, extension: string, mimeType: string) => {
+    const formatName = extension.replace('.', '').toUpperCase()
+    const result = await window.electronAPI?.app.saveFile({
+      title: `Export ${formatName}`,
+      defaultPath: `${getSafeTemplateName()}${extension}`,
+      filters: [{ name: `${formatName} files`, extensions: [extension.replace('.', '')] }],
+      extension,
+      showDialog: true,
+      base64Content,
+      mimeType,
+    })
+    if (result?.success === false && !result.canceled) {
+      throw new Error(result.error || 'Could not export the file')
+    }
+  }
+
+  const handleExport = async (format: ExportFormat) => {
+    if (!currentTemplate) return
+    const canvasData = buildCanvasData()
+    setIsSaving(true)
+    try {
+      if (format === 'labelforge') {
+        const exportData = {
+          format: 'labelforge-template',
+          formatVersion: 1,
+          savedAt: new Date().toISOString(),
+          template: currentTemplate,
+          canvas: canvasData,
+        }
+        const result = await window.electronAPI?.app.saveFile({
+          title: 'Export LabelForge Studio File',
+          defaultPath: `${getSafeTemplateName()}.lfx`,
+          filters: [
+            { name: 'LabelForge Studio', extensions: ['lfx'] },
+            { name: 'JSON Document', extensions: ['json'] },
+          ],
+          extension: '.lfx',
+          showDialog: true,
+          content: JSON.stringify(exportData, null, 2),
+        })
+        if (result?.success === false && !result.canceled) {
+          throw new Error(result.error || 'Could not export the file')
+        }
+        return
+      }
+
+      if (format === 'pdf') {
+        const blob = await renderToPDF(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit, currentTemplate.name || 'label')
+        await saveBase64Export(await blobToBase64(blob), '.pdf', 'application/pdf')
+        return
+      }
+
+      const dataUrl = format === 'jpeg'
+        ? await renderToJPEG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+        : await renderToPNG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+      await saveBase64Export(dataUrl.split(',')[1] || '', format === 'jpeg' ? '.jpg' : '.png', format === 'jpeg' ? 'image/jpeg' : 'image/png')
+    } catch (error: any) {
+      alert(`Export failed: ${error.message}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   useEffect(() => {
     if (!currentTemplate || !id || !hasLoadedVersionRef.current) return
     const currentHash = getCanvasHash()
@@ -645,7 +739,7 @@ export default function TemplateDesigner() {
       case 'line':
         obj = {
           id, type: 'line', name: `Line ${objects.length + 1}`,
-          x: 20, y: 50, width: 200, height: 0, rotation: 0,
+          x: 20, y: 50, width: 200, height: 12, rotation: 0,
           visible: true, locked: false, opacity: 1,
         } as LineObjType
         ;(obj as LineObjType).startX = 0
@@ -905,7 +999,9 @@ export default function TemplateDesigner() {
     x: obj.x,
     y: obj.y,
     width: Math.max(1, obj.width),
-    height: Math.max(1, obj.height || (obj.type === 'line' ? 1 : obj.height)),
+    height: obj.type === 'line'
+      ? getLineVisualHeight(obj as LineObjType)
+      : Math.max(1, obj.height),
   }), [])
 
   const getSnapResult = useCallback((moving: Bounds, movingId: string) => {
@@ -1164,9 +1260,9 @@ export default function TemplateDesigner() {
 
       const scaleX = node.scaleX()
       const scaleY = node.scaleY()
-      const nextWidth = Math.max(4, obj.width * scaleX)
+      const nextWidth = Math.max(4, Math.abs(obj.width * scaleX))
       const nextHeight = obj.type === 'line'
-        ? Math.max(1, Math.abs((obj.height || 1) * scaleY))
+        ? getLineVisualHeight(obj as LineObjType)
         : Math.max(4, obj.height * scaleY)
 
       node.scaleX(1)
@@ -1181,9 +1277,12 @@ export default function TemplateDesigner() {
       }
 
       if (obj.type === 'line') {
+        const lineHeight = getLineVisualHeight(obj as LineObjType)
+        updates.x = node.x() - nextWidth / 2
+        updates.y = node.y() - lineHeight / 2
         ;(updates as any).endX = nextWidth
         ;(updates as any).endY = 0
-        updates.height = 0
+        updates.height = lineHeight
       }
 
       updateObject(objectId, updates)
@@ -1372,23 +1471,37 @@ export default function TemplateDesigner() {
       }
       case 'line': {
         const lineObj = obj as LineObjType
+        const lineHeight = getLineVisualHeight(lineObj)
+        const nodePosition = getLineNodePosition(lineObj)
+        const dragObject = { ...obj, x: nodePosition.x, y: nodePosition.y }
         return (
           <Group
             id={getNodeId(obj.id)}
             key={obj.id}
-            x={obj.x}
-            y={obj.y}
+            x={nodePosition.x}
+            y={nodePosition.y}
+            width={Math.max(4, obj.width)}
+            height={lineHeight}
             rotation={obj.rotation}
             onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
             onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
             onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
             onTap={() => handleObjectClick(obj.id, false)}
             draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
+            onDragMove={(e) => handleObjectDragMove(dragObject, e)}
+            onDragEnd={(e) => handleObjectDragEnd(dragObject, e)}
           >
+            <Rect
+              x={-obj.width / 2}
+              y={-lineHeight / 2}
+              width={Math.max(4, obj.width)}
+              height={lineHeight}
+              fill="transparent"
+              stroke={(isSelected || isLayerFlashing) ? selectionStroke : 'transparent'}
+              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 0}
+            />
             <Line
-              points={[0, 0, lineObj.endX || obj.width, lineObj.endY || obj.height]}
+              points={[-obj.width / 2, 0, obj.width / 2, 0]}
               stroke={(isSelected || isLayerFlashing) ? selectionStroke : lineObj.lineColor}
               strokeWidth={isLayerFlashing ? Math.max(lineObj.lineThickness + 2, 3) : lineObj.lineThickness}
               shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
@@ -1609,7 +1722,7 @@ export default function TemplateDesigner() {
       <Toolbar
         onSave={() => { void handleSave(false) }}
         onSaveAs={() => { void handleSave(false, true) }}
-        onExport={() => { void handleSave(false, true) }}
+        onExport={(format) => { void handleExport(format) }}
         onPrint={handleOpenPrintPreview}
         isSaving={isSaving}
         onAddObject={handleAddObject}

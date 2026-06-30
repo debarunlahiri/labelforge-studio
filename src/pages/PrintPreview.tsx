@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Layer, Line, Rect, Stage } from 'react-konva'
+import { Group, Layer, Line, Rect, Stage } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
-import { renderToEPL, renderToPDF, renderToPNG, renderToTSPL, renderToZPL } from '../utils/labelRenderer'
+import { renderToJPEG, renderToPDF, renderToPNG } from '../utils/labelRenderer'
 import type { BarcodeObject, ImageObject, LabelObject, LineObject as LineObjType, Printer, QRCodeObject, ShapeObject, TextObject } from '../types'
 import BarcodeRenderer from '../designer/BarcodeRenderer'
 import ImageRenderer from '../designer/ImageRenderer'
@@ -25,6 +25,10 @@ function unitToPx(value: number, unit = 'mm', dpi = 300): number {
 
 function clampCopies(value: number): number {
   return Math.max(1, Math.min(9999, Number(value) || 1))
+}
+
+function getLineVisualHeight(line: LineObjType): number {
+  return Math.max(12, line.lineThickness || 1)
 }
 
 export default function PrintPreview() {
@@ -115,13 +119,30 @@ export default function PrintPreview() {
     }
   }
 
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+      reader.onerror = () => reject(reader.error || new Error('Could not read exported file data.'))
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  const saveBase64File = async (base64Content: string, filename: string, extension: string, mimeType: string) => {
+    const result = await window.electronAPI?.app.saveFile({
+      title: `Save ${extension.replace('.', '').toUpperCase()}`,
+      defaultPath: filename,
+      filters: [{ name: `${extension.replace('.', '').toUpperCase()} files`, extensions: [extension.replace('.', '')] }],
+      extension,
+      showDialog: true,
+      base64Content,
+      mimeType,
+    })
+    if (result?.success === false) {
+      if (result.canceled) return null
+      throw new Error(result.error || 'Could not save the file.')
+    }
+    return result?.filePath || filename
   }
 
   const handleExportPNG = async () => {
@@ -130,13 +151,25 @@ export default function PrintPreview() {
     setStatusMessage('Exporting PNG...')
     try {
       const dataUrl = await renderToPNG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
-      const link = document.createElement('a')
-      link.href = dataUrl
-      link.download = `${currentTemplate.name || 'label'}.png`
-      link.click()
-      setStatusMessage('PNG export started.')
+      const filePath = await saveBase64File(dataUrl.split(',')[1] || '', `${currentTemplate.name || 'label'}.png`, '.png', 'image/png')
+      setStatusMessage(filePath ? `PNG saved to ${filePath}.` : 'PNG export cancelled.')
     } catch (error: any) {
       setStatusMessage(`PNG export failed: ${error.message}`)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportJPEG = async () => {
+    if (!currentTemplate) return
+    setIsExporting(true)
+    setStatusMessage('Exporting JPEG...')
+    try {
+      const dataUrl = await renderToJPEG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+      const filePath = await saveBase64File(dataUrl.split(',')[1] || '', `${currentTemplate.name || 'label'}.jpg`, '.jpg', 'image/jpeg')
+      setStatusMessage(filePath ? `JPEG saved to ${filePath}.` : 'JPEG export cancelled.')
+    } catch (error: any) {
+      setStatusMessage(`JPEG export failed: ${error.message}`)
     } finally {
       setIsExporting(false)
     }
@@ -148,8 +181,8 @@ export default function PrintPreview() {
     setStatusMessage('Exporting PDF...')
     try {
       const blob = await renderToPDF(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit, currentTemplate.name || 'label')
-      downloadBlob(blob, `${currentTemplate.name || 'label'}.pdf`)
-      setStatusMessage('PDF export started.')
+      const filePath = await saveBase64File(await blobToBase64(blob), `${currentTemplate.name || 'label'}.pdf`, '.pdf', 'application/pdf')
+      setStatusMessage(filePath ? `PDF saved to ${filePath}.` : 'PDF export cancelled.')
     } catch (error: any) {
       setStatusMessage(`PDF export failed: ${error.message}`)
     } finally {
@@ -157,25 +190,48 @@ export default function PrintPreview() {
     }
   }
 
-  const handleExportPrinterLanguage = async () => {
+  const handleExportLabelForge = async () => {
     if (!currentTemplate) return
-    if (printerLanguage === 'pdf') {
-      await handleExportPDF()
-      return
+    setIsExporting(true)
+    setStatusMessage('Exporting LabelForge Studio file...')
+    try {
+      const currentVersion = versions.find((version) => version.id === currentTemplate.current_version_id) || versions[0]
+      const canvas = currentVersion?.template_json ? JSON.parse(currentVersion.template_json) : {
+        width: canvasWidth,
+        height: canvasHeight,
+        unit: currentTemplate.unit,
+        dpi: currentTemplate.dpi,
+        objects,
+        dataSources: [],
+        printSettings: { copies: 1, printerLanguage: 'pdf' },
+      }
+      const exportData = {
+        format: 'labelforge-template',
+        formatVersion: 1,
+        savedAt: new Date().toISOString(),
+        template: currentTemplate,
+        canvas,
+      }
+      const result = await window.electronAPI?.app.saveFile({
+        title: 'Save LabelForge Studio File',
+        defaultPath: `${currentTemplate.name || 'label'}.lfx`,
+        filters: [
+          { name: 'LabelForge Studio', extensions: ['lfx'] },
+          { name: 'JSON Document', extensions: ['json'] },
+        ],
+        extension: '.lfx',
+        showDialog: true,
+        content: JSON.stringify(exportData, null, 2),
+      })
+      if (result?.success === false && !result.canceled) {
+        throw new Error(result.error || 'Could not save the file.')
+      }
+      setStatusMessage(result?.canceled ? 'LabelForge Studio export cancelled.' : `LabelForge Studio file saved to ${result?.filePath}.`)
+    } catch (error: any) {
+      setStatusMessage(`LabelForge Studio export failed: ${error.message}`)
+    } finally {
+      setIsExporting(false)
     }
-
-    const renderers = {
-      zpl: () => renderToZPL(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.unit),
-      epl: () => renderToEPL(objects, currentTemplate.label_width, currentTemplate.label_height),
-      tspl: () => renderToTSPL(objects, currentTemplate.label_width, currentTemplate.label_height),
-    }
-    const content = renderers[printerLanguage]()
-    if (!content.trim()) {
-      setStatusMessage(`${printerLanguage.toUpperCase()} export is not available for this label.`)
-      return
-    }
-    downloadBlob(new Blob([content], { type: 'text/plain' }), `${currentTemplate.name || 'label'}.${printerLanguage}`)
-    setStatusMessage(`${printerLanguage.toUpperCase()} export started.`)
   }
 
   const handlePrint = async () => {
@@ -190,14 +246,27 @@ export default function PrintPreview() {
     setIsPrinting(true)
     setStatusMessage('Sending print job...')
     try {
-      const result = await window.electronAPI?.printJobs.create({
-        template_id: currentTemplate.id,
-        template_version_id: currentTemplate.current_version_id || versions[0]?.id,
-        printer_id: selectedPrinter,
-        requested_by: 'current_user',
-        copies: safeCopies,
-        printer_language: printerLanguage === 'pdf' ? undefined : printerLanguage,
-      })
+      let result
+      if (printerLanguage === 'pdf') {
+        const dataUrl = await renderToPNG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+        result = await window.electronAPI?.app.printImage({
+          dataUrl,
+          printerName: selectedPrinterDetails?.driver_name || selectedPrinterDetails?.name,
+          copies: safeCopies,
+          width: currentTemplate.label_width,
+          height: currentTemplate.label_height,
+          unit: currentTemplate.unit,
+        })
+      } else {
+        result = await window.electronAPI?.printJobs.create({
+          template_id: currentTemplate.id,
+          template_version_id: currentTemplate.current_version_id || versions[0]?.id,
+          printer_id: selectedPrinter,
+          requested_by: 'current_user',
+          copies: safeCopies,
+          printer_language: printerLanguage,
+        })
+      }
       if (result?.success === false) throw new Error(result.error || 'Print failed')
       setStatusMessage('Print job sent successfully.')
     } catch (error: any) {
@@ -261,7 +330,12 @@ export default function PrintPreview() {
       }
       case 'line': {
         const line = obj as LineObjType
-        return <Line key={obj.id} points={[obj.x, obj.y, obj.x + line.endX, obj.y + line.endY]} stroke={line.lineColor} strokeWidth={line.lineThickness} />
+        const lineHeight = getLineVisualHeight(line)
+        return (
+          <Group key={obj.id} x={obj.x + obj.width / 2} y={obj.y + lineHeight / 2} rotation={obj.rotation}>
+            <Line points={[-obj.width / 2, 0, obj.width / 2, 0]} stroke={line.lineColor} strokeWidth={line.lineThickness} />
+          </Group>
+        )
       }
       case 'image': {
         const image = obj as ImageObject
@@ -436,11 +510,10 @@ export default function PrintPreview() {
               </button>
 
               <div className="grid grid-cols-2 gap-3">
+                <button onClick={handleExportLabelForge} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">LabelForge</button>
                 <button onClick={handleExportPDF} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">PDF</button>
+                <button onClick={handleExportJPEG} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">JPEG</button>
                 <button onClick={handleExportPNG} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">PNG</button>
-                <button onClick={handleExportPrinterLanguage} disabled={isExporting} className="col-span-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                  Export {printerLanguage === 'pdf' ? 'PDF' : printerLanguage.toUpperCase()}
-                </button>
               </div>
             </div>
           </section>

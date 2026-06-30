@@ -99,13 +99,17 @@ export default function TemplateLibrary() {
       const data = await window.electronAPI?.templates.exportTemplate(id)
       if (data) {
         const json = JSON.stringify(data, null, 2)
-        const blob = new Blob([json], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${data.template?.name || 'template'}.lfx.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        await window.electronAPI?.app.saveFile({
+          title: 'Save LabelForge Studio File',
+          defaultPath: `${data.template?.name || 'template'}.lfx`,
+          filters: [
+            { name: 'LabelForge Studio', extensions: ['lfx'] },
+            { name: 'JSON Document', extensions: ['json'] },
+          ],
+          extension: '.lfx',
+          showDialog: true,
+          content: json,
+        })
       }
     } catch {}
   }

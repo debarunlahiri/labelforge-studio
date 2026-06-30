@@ -74,6 +74,7 @@ const api = {
     selectFile: (options: any) => ipcRenderer.invoke('app:selectFile', options),
     readFile: (filePath: string) => ipcRenderer.invoke('app:readFile', filePath),
     saveFile: (options: any) => ipcRenderer.invoke('app:saveFile', options),
+    printImage: (options: any) => ipcRenderer.invoke('app:printImage', options),
   },
 }
 

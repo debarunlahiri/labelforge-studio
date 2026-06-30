@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faBarcode,
@@ -14,6 +15,7 @@ import {
   faHashtag,
   faImage,
   faFileExport,
+  faChevronDown,
   faMinus,
   faPlus,
   faPrint,
@@ -30,7 +32,7 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 interface ToolbarProps {
   onSave: () => void
   onSaveAs: () => void
-  onExport: () => void
+  onExport: (format: 'labelforge' | 'pdf' | 'jpeg' | 'png') => void
   onPrint: () => void
   isSaving: boolean
   onAddObject: (type: string) => void
@@ -54,6 +56,13 @@ interface ToolbarProps {
   canRedo?: boolean
   onAlign?: (action: string) => void
 }
+
+const exportFormats = [
+  { value: 'labelforge', label: 'LabelForge Studio' },
+  { value: 'pdf', label: 'PDF' },
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'png', label: 'PNG' },
+] satisfies Array<{ value: 'labelforge' | 'pdf' | 'jpeg' | 'png'; label: string }>
 
 const objectTypes = [
   { type: 'text', label: 'Text', icon: faT },
@@ -86,9 +95,29 @@ export default function Toolbar({
   hasSelection, templateName, onToggleDataSource, showDataSource,
   onToggleArtboard, showArtboard, onUndo, onRedo, canUndo, canRedo, onAlign,
 }: ToolbarProps) {
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
   const shortcutModifier = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
     ? '⌘'
     : 'Ctrl'
+
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setExportMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [exportMenuOpen])
 
   return (
     <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] bg-white px-6 py-3 shadow-sm">
@@ -117,16 +146,40 @@ export default function Toolbar({
           Save As
           <ToolbarTooltip label="Save As" description={`Choose a new file name or location. Shortcut: ${shortcutModifier}+Shift+S.`} />
         </button>
-        <button
-          onClick={onExport}
-          disabled={isSaving}
-          className="group relative inline-flex h-8 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-          aria-label="Export design"
-        >
-          <FontAwesomeIcon icon={faFileExport} />
-          Export
-          <ToolbarTooltip label="Export Design" description="Export this design as a LabelForge file." />
-        </button>
+        <div ref={exportMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setExportMenuOpen((open) => !open)}
+            disabled={isSaving}
+            className="group relative inline-flex h-8 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            aria-label="Export design"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+          >
+            <FontAwesomeIcon icon={faFileExport} />
+            Export
+            <FontAwesomeIcon icon={faChevronDown} className="text-[10px] text-slate-500" />
+            <ToolbarTooltip label="Export Design" description="Choose a file format for this design." />
+          </button>
+          {exportMenuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-md border border-slate-200 bg-white py-1 shadow-xl" role="menu">
+              {exportFormats.map((format) => (
+                <button
+                  key={format.value}
+                  type="button"
+                  onClick={() => {
+                    setExportMenuOpen(false)
+                    onExport(format.value)
+                  }}
+                  className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  role="menuitem"
+                >
+                  {format.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           onClick={onPrint}
           className="group relative inline-flex h-8 items-center gap-2 rounded-md bg-slate-900 px-3 text-xs font-semibold text-white hover:bg-slate-800"
@@ -161,7 +214,7 @@ export default function Toolbar({
             <button
               key={obj.type}
               onClick={() => onAddObject(obj.type)}
-              className="group relative inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-white hover:shadow-sm"
+              className="group relative inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-white hover:shadow-sm"
               aria-label={`Add ${obj.label}`}
             >
               <FontAwesomeIcon icon={obj.icon} />

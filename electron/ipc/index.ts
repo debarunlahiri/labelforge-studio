@@ -1,4 +1,4 @@
-import { ipcMain, app, dialog } from 'electron'
+import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import { listTemplates, getTemplateById, createTemplate, updateTemplate, deleteTemplate as deleteTemplateRepo, duplicateTemplate, archiveTemplate, exportTemplate, importTemplate } from '../database/repositories/templates'
 import { listTemplateVersions, getTemplateVersionById, saveTemplateVersion, submitForApproval, approveVersion, rejectVersion } from '../database/repositories/templateVersions'
 import { listPrinters, getPrinterById, registerPrinter, updatePrinter, deletePrinter as deletePrinterRepo, updatePrinterJobStatus, updatePrinterStatus } from '../database/repositories/printers'
@@ -368,11 +368,113 @@ export function registerIpcHandlers(): void {
         filePath += requiredExtension
       }
 
-      fs.writeFileSync(filePath, String(options?.content ?? ''), 'utf-8')
+      if (options?.base64Content) {
+        fs.writeFileSync(filePath, Buffer.from(String(options.base64Content), 'base64'))
+      } else if (options?.content instanceof Uint8Array) {
+        fs.writeFileSync(filePath, Buffer.from(options.content))
+      } else {
+        fs.writeFileSync(filePath, String(options?.content ?? ''), 'utf-8')
+      }
       return { success: true, filePath }
     } catch (error: any) {
       return { success: false, error: error.message }
     }
   })
 
+  ipcMain.handle('app:printImage', async (_event, options: any) => {
+    const dataUrl = String(options?.dataUrl || '')
+    const printerName = String(options?.printerName || options?.deviceName || '')
+    const copies = Math.max(1, Math.min(9999, Number(options?.copies || 1)))
+    const width = Math.max(1, Number(options?.width || 0))
+    const height = Math.max(1, Number(options?.height || 0))
+    const unit = String(options?.unit || 'mm')
+
+    if (!dataUrl.startsWith('data:image/')) {
+      return { success: false, error: 'A rendered image is required for printing.' }
+    }
+    if (!printerName) {
+      return { success: false, error: 'Printer name is required for system printing.' }
+    }
+
+    const pageSize = toMicrons(width, height, unit)
+    const printWindow = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 600,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+
+    try {
+      const html = buildPrintHtml(dataUrl, width, height, unit)
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      const result = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+        printWindow.webContents.print({
+          silent: true,
+          printBackground: true,
+          deviceName: printerName,
+          copies,
+          margins: { marginType: 'none' },
+          pageSize,
+        }, (success, failureReason) => {
+          resolve(success ? { success: true } : { success: false, error: failureReason || 'The printer rejected the job.' })
+        })
+      })
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    } finally {
+      if (!printWindow.isDestroyed()) printWindow.close()
+    }
+  })
+
   }
+
+function toMicrons(width: number, height: number, unit: string): { width: number; height: number } {
+  const mmWidth = unit === 'cm' ? width * 10 : unit === 'in' ? width * 25.4 : unit === 'px' ? width * 25.4 / 96 : width
+  const mmHeight = unit === 'cm' ? height * 10 : unit === 'in' ? height * 25.4 : unit === 'px' ? height * 25.4 / 96 : height
+  return {
+    width: Math.max(1000, Math.round(mmWidth * 1000)),
+    height: Math.max(1000, Math.round(mmHeight * 1000)),
+  }
+}
+
+function toCssSize(value: number, unit: string): string {
+  if (unit === 'px') return `${value}px`
+  if (unit === 'in') return `${value}in`
+  if (unit === 'cm') return `${value}cm`
+  return `${value}mm`
+}
+
+function buildPrintHtml(dataUrl: string, width: number, height: number, unit: string): string {
+  const cssWidth = toCssSize(width, unit)
+  const cssHeight = toCssSize(height, unit)
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: ${cssWidth} ${cssHeight}; margin: 0; }
+    html, body {
+      width: ${cssWidth};
+      height: ${cssHeight};
+      margin: 0;
+      padding: 0;
+      background: white;
+      overflow: hidden;
+    }
+    img {
+      display: block;
+      width: ${cssWidth};
+      height: ${cssHeight};
+    }
+  </style>
+</head>
+<body>
+  <img src="${dataUrl}" alt="">
+</body>
+</html>`
+}
