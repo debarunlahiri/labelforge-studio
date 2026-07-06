@@ -151,6 +151,8 @@ export interface DateTimeObject extends LabelObject {
   format: string
   offset: number
   offsetUnit: 'days' | 'months' | 'years'
+  baseDate?: string
+  baseTime?: string
 }
 
 export interface CounterObject extends LabelObject {

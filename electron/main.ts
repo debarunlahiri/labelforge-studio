@@ -9,6 +9,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
 
+function getAppIconPath() {
+  const candidates = [
+    path.join(__dirname, '..', 'dist', 'app_logo.png'),
+    path.join(__dirname, '..', 'public', 'app_logo.png'),
+    path.join(__dirname, 'app_logo.png'),
+    path.join(app.getAppPath(), 'dist', 'app_logo.png'),
+    path.join(app.getAppPath(), 'public', 'app_logo.png'),
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
 function writeStartupLog(message: string, error?: unknown) {
   const details = error instanceof Error ? `${error.stack ?? error.message}` : String(error ?? '')
   const line = `[${new Date().toISOString()}] ${message}${details ? `\n${details}` : ''}\n`
@@ -32,7 +46,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'LabelForge Studio',
-    icon: path.join(__dirname, '..', 'dist', 'icon.png'),
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

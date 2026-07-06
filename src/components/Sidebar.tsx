@@ -8,7 +8,6 @@ import {
   faGaugeHigh,
   faPlus,
   faPrint,
-  faTableCells,
   faTags,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
@@ -21,9 +20,7 @@ const designItems: MenuItem[] = [
 ]
 
 const printerItems: MenuItem[] = [
-  { path: '/app/print', label: 'Print', description: 'Choose a design and print it', icon: faPrint },
   { path: '/app/print-history', label: 'Print History', description: 'Review previous print jobs', icon: faClipboardList },
-  { path: '/app/printers', label: 'Printer Setup', description: 'Detect, add, and manage printers', icon: faTableCells },
 ]
 
 function NavigationMenu({
@@ -95,7 +92,7 @@ export default function Sidebar() {
   const dashboardActive = location.pathname.startsWith('/app/dashboard')
   const settingsActive = location.pathname.startsWith('/app/settings')
   const designActive = location.pathname.startsWith('/app/templates')
-  const printerActive = ['/app/print', '/app/print-history', '/app/printers'].some((path) => location.pathname.startsWith(path))
+  const printerActive = location.pathname.startsWith('/app/print-history')
   const linkClass = (active: boolean) =>
     `relative flex h-10 items-center gap-2 rounded-md px-3 text-[13px] font-medium transition-colors ${
       active ? 'bg-white/10 text-white ring-1 ring-white/10' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
@@ -103,9 +100,7 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-[72px] shrink-0 items-center border-b border-slate-800 bg-[var(--sidebar-bg)] px-5 text-[var(--sidebar-text)] shadow-sm">
-      <div className="flex h-12 shrink-0 cursor-pointer items-center gap-3 border-r border-slate-800 pr-5" onClick={() => (window.location.href = '/')}>
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-950/30">LF</div>
-        <div className="flex flex-col">
+      <div className="flex h-12 shrink-0 cursor-pointer items-center gap-3 border-r border-slate-800 pr-5" onClick={() => (window.location.href = '/')}>\n        <img src="/app_logo.png" alt="LabelForge Studio" className="h-9 w-9 rounded-lg object-cover shadow-lg shadow-blue-950/30" />\n        <div className="flex flex-col">
           <span className="text-sm font-semibold text-white">LabelForge</span>
           <span className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Studio</span>
         </div>

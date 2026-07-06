@@ -12,6 +12,7 @@ import type {
 import { styleAt } from '../designer/richText'
 import bwipjs from 'bwip-js'
 import { getBwipSymbology, isQrFamilySymbology, symbologyByValue } from '../designer/symbologies'
+import { formatDateTimeObject, formatCounter } from './dynamicFields'
 
 function convertToDots(value: number, unit: string, dpi: number): number {
   switch (unit) {
@@ -322,7 +323,7 @@ export async function renderToCanvas(
       }
       case 'datetime': {
         const dt = obj as DateTimeObject
-        const dateStr = new Date().toLocaleDateString()
+        const dateStr = formatDateTimeObject(dt)
         ctx.fillStyle = '#000000'
         ctx.font = '14px Arial'
         ctx.textAlign = 'left'
@@ -332,7 +333,7 @@ export async function renderToCanvas(
       }
       case 'counter': {
         const c = obj as CounterObject
-        const counterStr = `${c.prefix}${String(c.startValue).padStart(c.padding, '0')}${c.suffix}`
+        const counterStr = formatCounter(c)
         ctx.fillStyle = '#000000'
         ctx.font = '14px Arial'
         ctx.textAlign = 'left'
@@ -568,7 +569,7 @@ export function renderToZPL(
         const dtHeight = convertToDots(14, 'pt', dpi)
         zpl += `^FO${x},${y}\n`
         zpl += `^A${dtFontName}N,${dtHeight},${Math.round(dtHeight * 0.6)}\n`
-        zpl += `^FD${new Date().toLocaleDateString()}^FS\n`
+        zpl += `^FD${formatDateTimeObject(dt)}^FS\n`
         break
       }
       case 'counter': {
@@ -577,7 +578,7 @@ export function renderToZPL(
         const cHeight = convertToDots(14, 'pt', dpi)
         zpl += `^FO${x},${y}\n`
         zpl += `^A${cFontName}N,${cHeight},${Math.round(cHeight * 0.6)}\n`
-        zpl += `^FD${c.prefix}${String(c.startValue).padStart(c.padding, '0')}${c.suffix}^FS\n`
+        zpl += `^FD${formatCounter(c)}^FS\n`
         break
       }
     }

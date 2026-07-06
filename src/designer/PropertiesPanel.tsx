@@ -7,11 +7,13 @@ import {
   faBarcode,
   faBold,
   faBorderAll,
+  faCalendarDays,
   faEye,
   faEyeSlash,
   faFillDrip,
   faFont,
   faGear,
+  faHashtag,
   faItalic,
   faLayerGroup,
   faLock,
@@ -23,10 +25,12 @@ import {
   faUnderline,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, ImageObject } from '../types'
-import { barcodeSymbologyGroups, qrSymbologyGroups } from './symbologies'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, ImageObject, DateTimeObject, CounterObject } from '../types'
+import { barcodeSymbologyGroups, qrSymbologyGroups, getSymbologyLabel } from './symbologies'
 import SearchableSelect from '../components/SearchableSelect'
 import { applyStyleRange, shiftRunsForTextChange, styleAt, type TextStyle } from './richText'
+import { formatDateTimeObject, formatCounter, hasTimeFormat } from '../utils/dynamicFields'
+import BarcodeSymbologyModal from './BarcodeSymbologyModal'
 
 interface PropertiesPanelProps {
   object: LabelObject
@@ -277,6 +281,8 @@ function getObjectIcon(type: LabelObject['type']) {
   if (type === 'barcode') return faBarcode
   if (type === 'qrcode') return faQrcode
   if (type === 'text') return faFont
+  if (type === 'datetime') return faCalendarDays
+  if (type === 'counter') return faHashtag
   return faLayerGroup
 }
 
@@ -341,6 +347,7 @@ function SymbologySelect({
 
 export default function PropertiesPanel({ object, onUpdate, onDelete, textSelection: externalTextSelection, onTextSelectionChange }: PropertiesPanelProps) {
   const [localTextSelection, setLocalTextSelection] = useState({ start: 0, end: 0 })
+  const [barcodeModalOpen, setBarcodeModalOpen] = useState(false)
   const textSelection = externalTextSelection ?? localTextSelection
   const setTextSelection = onTextSelectionChange ?? setLocalTextSelection
   const handleChange = (key: string, value: any) => {
@@ -500,10 +507,20 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
           return (
             <Section title="Barcode" icon={faBarcode}>
               <Field label="Symbology">
-                <SymbologySelect
+                <button
+                  type="button"
+                  onClick={() => setBarcodeModalOpen(true)}
+                  className="flex h-9 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 text-xs text-slate-900 transition-colors hover:border-blue-400 hover:bg-slate-50"
+                >
+                  <span>{getSymbologyLabel(bcObj.barcodeType)}</span>
+                  <span className="text-[10px] text-slate-400">Change</span>
+                </button>
+                <BarcodeSymbologyModal
+                  isOpen={barcodeModalOpen}
+                  onClose={() => setBarcodeModalOpen(false)}
                   value={bcObj.barcodeType}
-                  groups={barcodeSymbologyGroups}
                   onChange={(value) => handleChange('barcodeType', value)}
+                  groups={barcodeSymbologyGroups}
                 />
               </Field>
 
@@ -688,6 +705,154 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
             })()}
           </Section>
         )}
+
+        {object.type === 'datetime' && (() => {
+          const dtObj = object as DateTimeObject
+          const showTimePicker = hasTimeFormat(dtObj.format || '')
+          const datePresets = [
+            { label: 'Short', format: 'dd/MM/yyyy' },
+            { label: 'US', format: 'MM/dd/yyyy' },
+            { label: 'ISO', format: 'yyyy-MM-dd' },
+            { label: 'Verbose', format: 'dd MMM yyyy' },
+            { label: 'Date-Time', format: 'dd/MM/yyyy HH:mm' },
+            { label: 'Time', format: 'HH:mm:ss' },
+          ]
+
+          const applyPreset = (format: string) => {
+            const updates: Record<string, unknown> = { format }
+            if (hasTimeFormat(format) && !dtObj.baseTime) {
+              const now = new Date()
+              updates.baseTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+            }
+            onUpdate(updates as Partial<LabelObject>)
+          }
+
+          return (
+            <Section title="Date & Time" icon={faCalendarDays}>
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
+                <Field label="Pick date">
+                  <input
+                    type="date"
+                    value={dtObj.baseDate || new Date().toISOString().split('T')[0]}
+                    onChange={(e) => handleChange('baseDate', e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+                {showTimePicker && (
+                  <Field label="Pick time">
+                    <input
+                      type="time"
+                      value={dtObj.baseTime || '00:00'}
+                      onChange={(e) => handleChange('baseTime', e.target.value)}
+                      className={inputClass}
+                    />
+                  </Field>
+                )}
+              </div>
+
+              <Field label="Format">
+                <input
+                  type="text"
+                  value={dtObj.format || ''}
+                  onChange={(e) => handleChange('format', e.target.value)}
+                  className={inputClass}
+                  placeholder="dd/MM/yyyy"
+                />
+              </Field>
+
+              <Field label="Date styles">
+                <div className="flex flex-wrap gap-2">
+                  {datePresets.map((preset) => (
+                    <button
+                      key={preset.format}
+                      type="button"
+                      onClick={() => applyPreset(preset.format)}
+                      className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                        dtObj.format === preset.format
+                          ? 'border-blue-200 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
+                <NumberField label="Offset" value={dtObj.offset ?? 0} step={1} onChange={(value) => handleChange('offset', value)} />
+                <Field label="Offset unit">
+                  <select
+                    value={dtObj.offsetUnit || 'days'}
+                    onChange={(e) => handleChange('offsetUnit', e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="days">Days</option>
+                    <option value="months">Months</option>
+                    <option value="years">Years</option>
+                  </select>
+                </Field>
+              </div>
+              <Field label="Preview">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-600">
+                  {formatDateTimeObject(dtObj)}
+                </div>
+              </Field>
+            </Section>
+          )
+        })()}
+
+        {object.type === 'counter' && (() => {
+          const cntObj = object as CounterObject
+          return (
+            <Section title="Counter" icon={faHashtag}>
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
+                <NumberField label="Start value" value={cntObj.startValue ?? 1} step={1} onChange={(value) => handleChange('startValue', value)} />
+                <NumberField label="End value" value={cntObj.endValue ?? 9999} step={1} onChange={(value) => handleChange('endValue', value)} />
+              </div>
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
+                <NumberField label="Increment" value={cntObj.increment ?? 1} step={1} onChange={(value) => handleChange('increment', value)} />
+                <NumberField label="Padding" value={cntObj.padding ?? 4} step={1} onChange={(value) => handleChange('padding', Math.max(0, value))} />
+              </div>
+              <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-4">
+                <Field label="Prefix">
+                  <input
+                    type="text"
+                    value={cntObj.prefix || ''}
+                    onChange={(e) => handleChange('prefix', e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Suffix">
+                  <input
+                    type="text"
+                    value={cntObj.suffix || ''}
+                    onChange={(e) => handleChange('suffix', e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+              <Field label="Reset type">
+                <select
+                  value={cntObj.resetType || 'never'}
+                  onChange={(e) => handleChange('resetType', e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="never">Never</option>
+                  <option value="daily">Daily</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                  <option value="perTemplate">Per Template</option>
+                </select>
+              </Field>
+              <Field label="Preview">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-600">
+                  {formatCounter(cntObj)}
+                </div>
+              </Field>
+            </Section>
+          )
+        })()}
 
         <div>
           <button

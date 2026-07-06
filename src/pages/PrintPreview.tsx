@@ -1,45 +1,386 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Group, Layer, Line, Rect, Stage } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
-import { renderToJPEG, renderToPDF, renderToPNG } from '../utils/labelRenderer'
-import type { BarcodeObject, ImageObject, LabelObject, LineObject as LineObjType, Printer, QRCodeObject, ShapeObject, TextObject } from '../types'
-import BarcodeRenderer from '../designer/BarcodeRenderer'
-import ImageRenderer from '../designer/ImageRenderer'
-import ShapeRenderer from '../designer/ShapeRenderer'
-import RichTextRenderer from '../designer/RichTextRenderer'
+import { renderToCanvas } from '../utils/labelRenderer'
+import SearchableSelect from '../components/SearchableSelect'
+import type { Printer } from '../types'
 
-const UNIT_TO_PX: Record<string, number> = {
-  mm: 3.78,
-  cm: 37.8,
-  in: 96,
-  px: 1,
-  pt: 1.33,
+type PaperSizeId = string
+type Placement =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+type LabelsPerPage = '1' | '2' | '3' | '4' | 'multiple'
+
+const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number; unit: string; label: string }> = {
+  A4: { width: 210, height: 297, unit: 'mm', label: 'A4 (210 x 297 mm)' },
+  Letter: { width: 215.9, height: 279.4, unit: 'mm', label: 'Letter (215.9 x 279.4 mm)' },
+  Legal: { width: 215.9, height: 355.6, unit: 'mm', label: 'Legal (215.9 x 355.6 mm)' },
+  A5: { width: 148, height: 210, unit: 'mm', label: 'A5 (148 x 210 mm)' },
+  A6: { width: 105, height: 148, unit: 'mm', label: 'A6 (105 x 148 mm)' },
+  'Label 4" x 6"': { width: 101.6, height: 152.4, unit: 'mm', label: 'Label 4" x 6" (101.6 x 152.4 mm)' },
+  'Label 4" x 4"': { width: 101.6, height: 101.6, unit: 'mm', label: 'Label 4" x 4" (101.6 x 101.6 mm)' },
+  'Label 4" x 3"': { width: 101.6, height: 76.2, unit: 'mm', label: 'Label 4" x 3" (101.6 x 76.2 mm)' },
+  'Label 4" x 2"': { width: 101.6, height: 50.8, unit: 'mm', label: 'Label 4" x 2" (101.6 x 50.8 mm)' },
+  'Label 4" x 1.5"': { width: 101.6, height: 38.1, unit: 'mm', label: 'Label 4" x 1.5" (101.6 x 38.1 mm)' },
+  'Label 4" x 1"': { width: 101.6, height: 25.4, unit: 'mm', label: 'Label 4" x 1" (101.6 x 25.4 mm)' },
+  'Label 3" x 5"': { width: 76.2, height: 127, unit: 'mm', label: 'Label 3" x 5" (76.2 x 127 mm)' },
+  'Label 3" x 3"': { width: 76.2, height: 76.2, unit: 'mm', label: 'Label 3" x 3" (76.2 x 76.2 mm)' },
+  'Label 3" x 2"': { width: 76.2, height: 50.8, unit: 'mm', label: 'Label 3" x 2" (76.2 x 50.8 mm)' },
+  'Label 3" x 1.5"': { width: 76.2, height: 38.1, unit: 'mm', label: 'Label 3" x 1.5" (76.2 x 38.1 mm)' },
+  'Label 3" x 1"': { width: 76.2, height: 25.4, unit: 'mm', label: 'Label 3" x 1" (76.2 x 25.4 mm)' },
+  'Label 2.25" x 1.25"': { width: 57.15, height: 31.75, unit: 'mm', label: 'Label 2.25" x 1.25" (57.15 x 31.75 mm)' },
+  'Label 2" x 3"': { width: 50.8, height: 76.2, unit: 'mm', label: 'Label 2" x 3" (50.8 x 76.2 mm)' },
+  'Label 2" x 2"': { width: 50.8, height: 50.8, unit: 'mm', label: 'Label 2" x 2" (50.8 x 50.8 mm)' },
+  'Label 2" x 1.5"': { width: 50.8, height: 38.1, unit: 'mm', label: 'Label 2" x 1.5" (50.8 x 38.1 mm)' },
+  'Label 2" x 1"': { width: 50.8, height: 25.4, unit: 'mm', label: 'Label 2" x 1" (50.8 x 25.4 mm)' },
+  'Label 2" x 0.5"': { width: 50.8, height: 12.7, unit: 'mm', label: 'Label 2" x 0.5" (50.8 x 12.7 mm)' },
+  'Label 1.5" x 1"': { width: 38.1, height: 25.4, unit: 'mm', label: 'Label 1.5" x 1" (38.1 x 25.4 mm)' },
+  'Label 1" x 2"': { width: 25.4, height: 50.8, unit: 'mm', label: 'Label 1" x 2" (25.4 x 50.8 mm)' },
+  'Label 1" x 1"': { width: 25.4, height: 25.4, unit: 'mm', label: 'Label 1" x 1" (25.4 x 25.4 mm)' },
+  'Label 1" x 0.5"': { width: 25.4, height: 12.7, unit: 'mm', label: 'Label 1" x 0.5" (25.4 x 12.7 mm)' },
+  'Label 100 x 150 mm': { width: 100, height: 150, unit: 'mm', label: 'Label 100 x 150 mm' },
+  'Label 100 x 100 mm': { width: 100, height: 100, unit: 'mm', label: 'Label 100 x 100 mm' },
+  'Label 100 x 70 mm': { width: 100, height: 70, unit: 'mm', label: 'Label 100 x 70 mm' },
+  'Label 100 x 50 mm': { width: 100, height: 50, unit: 'mm', label: 'Label 100 x 50 mm' },
+  'Label 100 x 40 mm': { width: 100, height: 40, unit: 'mm', label: 'Label 100 x 40 mm' },
+  'Label 100 x 30 mm': { width: 100, height: 30, unit: 'mm', label: 'Label 100 x 30 mm' },
+  'Label 90 x 60 mm': { width: 90, height: 60, unit: 'mm', label: 'Label 90 x 60 mm' },
+  'Label 80 x 50 mm': { width: 80, height: 50, unit: 'mm', label: 'Label 80 x 50 mm' },
+  'Label 70 x 50 mm': { width: 70, height: 50, unit: 'mm', label: 'Label 70 x 50 mm' },
+  'Label 70 x 30 mm': { width: 70, height: 30, unit: 'mm', label: 'Label 70 x 30 mm' },
+  'Label 60 x 40 mm': { width: 60, height: 40, unit: 'mm', label: 'Label 60 x 40 mm' },
+  'Label 50 x 50 mm': { width: 50, height: 50, unit: 'mm', label: 'Label 50 x 50 mm' },
+  'Label 50 x 30 mm': { width: 50, height: 30, unit: 'mm', label: 'Label 50 x 30 mm' },
+  'Label 50 x 25 mm': { width: 50, height: 25, unit: 'mm', label: 'Label 50 x 25 mm' },
+  'Label 50 x 20 mm': { width: 50, height: 20, unit: 'mm', label: 'Label 50 x 20 mm' },
+  'Label 40 x 30 mm': { width: 40, height: 30, unit: 'mm', label: 'Label 40 x 30 mm' },
+  'Label 40 x 20 mm': { width: 40, height: 20, unit: 'mm', label: 'Label 40 x 20 mm' },
+  'Label 30 x 20 mm': { width: 30, height: 20, unit: 'mm', label: 'Label 30 x 20 mm' },
+  'Label 20 x 10 mm': { width: 20, height: 10, unit: 'mm', label: 'Label 20 x 10 mm' },
+  'Label 6" x 4"': { width: 152.4, height: 101.6, unit: 'mm', label: 'Label 6" x 4" (152.4 x 101.6 mm)' },
+  'Label 8" x 6"': { width: 203.2, height: 152.4, unit: 'mm', label: 'Label 8" x 6" (203.2 x 152.4 mm)' },
+  'Label 8" x 4"': { width: 203.2, height: 101.6, unit: 'mm', label: 'Label 8" x 4" (203.2 x 101.6 mm)' },
+  Custom: { width: 210, height: 297, unit: 'mm', label: 'Custom' },
 }
 
-function unitToPx(value: number, unit = 'mm', dpi = 300): number {
-  const factor = UNIT_TO_PX[unit] || UNIT_TO_PX.mm
-  return value * factor * (dpi / 300)
+const PLACEMENT_OPTIONS: { value: Placement; label: string }[] = [
+  { value: 'top-left', label: 'Top Left' },
+  { value: 'top-center', label: 'Top Center' },
+  { value: 'top-right', label: 'Top Right' },
+  { value: 'center-left', label: 'Center Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'center-right', label: 'Center Right' },
+  { value: 'bottom-left', label: 'Bottom Left' },
+  { value: 'bottom-center', label: 'Bottom Center' },
+  { value: 'bottom-right', label: 'Bottom Right' },
+]
+
+const LABELS_PER_PAGE_OPTIONS: { value: LabelsPerPage; label: string }[] = [
+  { value: '1', label: 'One per page' },
+  { value: '2', label: 'Two per page' },
+  { value: '3', label: 'Three per page' },
+  { value: '4', label: 'Four per page' },
+  { value: 'multiple', label: 'Multiple per page' },
+]
+
+function toPxAtDpi(value: number, unit: string, dpi: number): number {
+  switch (unit) {
+    case 'mm':
+      return (value * dpi) / 25.4
+    case 'cm':
+      return (value * dpi) / 2.54
+    case 'in':
+      return value * dpi
+    case 'pt':
+      return (value * dpi) / 72
+    case 'px':
+    default:
+      return value
+  }
+}
+
+function toScreenPx(value: number, unit: string): number {
+  return toPxAtDpi(value, unit, 96)
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
 
 function clampCopies(value: number): number {
-  return Math.max(1, Math.min(9999, Number(value) || 1))
+  return clamp(Number(value) || 1, 1, 9999)
 }
 
-function getLineVisualHeight(line: LineObjType): number {
-  return Math.max(12, line.lineThickness || 1)
+type Margins = { top: number; bottom: number; left: number; right: number }
+
+function getSingleLabelPositionPx(
+  placement: Placement,
+  paperWidthPx: number,
+  paperHeightPx: number,
+  labelWidthPx: number,
+  labelHeightPx: number,
+  margins: Margins,
+): { x: number; y: number } {
+  const availableWidthPx = Math.max(0, paperWidthPx - margins.left - margins.right)
+  const availableHeightPx = Math.max(0, paperHeightPx - margins.top - margins.bottom)
+
+  const xMap: Record<string, number> = {
+    left: 0,
+    center: (availableWidthPx - labelWidthPx) / 2,
+    right: availableWidthPx - labelWidthPx,
+  }
+  const yMap: Record<string, number> = {
+    top: 0,
+    center: (availableHeightPx - labelHeightPx) / 2,
+    bottom: availableHeightPx - labelHeightPx,
+  }
+
+  if (placement === 'center') {
+    return { x: margins.left + xMap.center, y: margins.top + yMap.center }
+  }
+
+  const [vertical, horizontal] = placement.split('-') as [string, string]
+  return {
+    x: margins.left + (xMap[horizontal] ?? xMap.center),
+    y: margins.top + (yMap[vertical] ?? yMap.center),
+  }
+}
+
+function getGridLayout(
+  labelsPerPage: LabelsPerPage,
+  availableWidthPx: number,
+  availableHeightPx: number,
+  labelWidthPx: number,
+  labelHeightPx: number,
+  gapXPx: number,
+  gapYPx: number,
+): { cols: number; rows: number } {
+  switch (labelsPerPage) {
+    case '2':
+      return { cols: 2, rows: 1 }
+    case '3':
+      return { cols: 3, rows: 1 }
+    case '4':
+      return { cols: 2, rows: 2 }
+    case 'multiple': {
+      const cols = Math.max(1, Math.floor((availableWidthPx + gapXPx) / (labelWidthPx + gapXPx)))
+      const rows = Math.max(1, Math.floor((availableHeightPx + gapYPx) / (labelHeightPx + gapYPx)))
+      return { cols, rows }
+    }
+    default:
+      return { cols: 1, rows: 1 }
+  }
+}
+
+function getGridLabelPositionsPx(
+  labelsPerPage: LabelsPerPage,
+  paperWidthPx: number,
+  paperHeightPx: number,
+  labelWidthPx: number,
+  labelHeightPx: number,
+  gapXPx: number,
+  gapYPx: number,
+  margins: Margins,
+): { x: number; y: number }[] {
+  const availableWidthPx = Math.max(0, paperWidthPx - margins.left - margins.right)
+  const availableHeightPx = Math.max(0, paperHeightPx - margins.top - margins.bottom)
+
+  const { cols, rows } = getGridLayout(
+    labelsPerPage,
+    availableWidthPx,
+    availableHeightPx,
+    labelWidthPx,
+    labelHeightPx,
+    gapXPx,
+    gapYPx,
+  )
+  const totalWidth = cols * labelWidthPx + Math.max(0, cols - 1) * gapXPx
+  const totalHeight = rows * labelHeightPx + Math.max(0, rows - 1) * gapYPx
+  const startX = margins.left + (availableWidthPx - totalWidth) / 2
+  const startY = margins.top + (availableHeightPx - totalHeight) / 2
+
+  const positions: { x: number; y: number }[] = []
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      positions.push({
+        x: startX + col * (labelWidthPx + gapXPx),
+        y: startY + row * (labelHeightPx + gapYPx),
+      })
+    }
+  }
+  return positions
+}
+
+async function composePageOntoCanvas(
+  targetCanvas: HTMLCanvasElement,
+  labelCanvas: HTMLCanvasElement,
+  paperSize: { width: number; height: number; unit: string },
+  labelSize: { width: number; height: number; unit: string },
+  labelsPerPage: LabelsPerPage,
+  placement: Placement,
+  applyBorder: boolean,
+  dpi: number,
+  gapX: number,
+  gapY: number,
+  spacingUnit: string,
+  margins: Margins,
+): Promise<void> {
+  const pageWidthPx = Math.round(toPxAtDpi(paperSize.width, paperSize.unit, dpi))
+  const pageHeightPx = Math.round(toPxAtDpi(paperSize.height, paperSize.unit, dpi))
+  const labelWidthPx = Math.round(toPxAtDpi(labelSize.width, labelSize.unit, dpi))
+  const labelHeightPx = Math.round(toPxAtDpi(labelSize.height, labelSize.unit, dpi))
+  const gapXPx = Math.round(toPxAtDpi(gapX, spacingUnit, dpi))
+  const gapYPx = Math.round(toPxAtDpi(gapY, spacingUnit, dpi))
+  const marginsPx = {
+    top: Math.round(toPxAtDpi(margins.top, spacingUnit, dpi)),
+    bottom: Math.round(toPxAtDpi(margins.bottom, spacingUnit, dpi)),
+    left: Math.round(toPxAtDpi(margins.left, spacingUnit, dpi)),
+    right: Math.round(toPxAtDpi(margins.right, spacingUnit, dpi)),
+  }
+  const borderWidthPx = Math.max(1, Math.round(toPxAtDpi(0.5, 'mm', dpi)))
+
+  targetCanvas.width = pageWidthPx
+  targetCanvas.height = pageHeightPx
+  const ctx = targetCanvas.getContext('2d')
+  if (!ctx) throw new Error('Could not create canvas context')
+
+  ctx.fillStyle = 'white'
+  ctx.fillRect(0, 0, pageWidthPx, pageHeightPx)
+
+  const positions =
+    labelsPerPage === '1'
+      ? [getSingleLabelPositionPx(placement, pageWidthPx, pageHeightPx, labelWidthPx, labelHeightPx, marginsPx)]
+      : getGridLabelPositionsPx(labelsPerPage, pageWidthPx, pageHeightPx, labelWidthPx, labelHeightPx, gapXPx, gapYPx, marginsPx)
+
+  for (const pos of positions) {
+    ctx.drawImage(labelCanvas, pos.x, pos.y, labelWidthPx, labelHeightPx)
+
+    if (applyBorder) {
+      ctx.strokeStyle = 'black'
+      ctx.lineWidth = borderWidthPx
+      ctx.strokeRect(pos.x, pos.y, labelWidthPx, labelHeightPx)
+    }
+  }
+}
+
+async function renderComposedPage(
+  labelCanvas: HTMLCanvasElement,
+  paperSize: { width: number; height: number; unit: string },
+  labelSize: { width: number; height: number; unit: string },
+  labelsPerPage: LabelsPerPage,
+  placement: Placement,
+  applyBorder: boolean,
+  dpi: number,
+  gapX: number,
+  gapY: number,
+  spacingUnit: string,
+  margins: Margins,
+): Promise<string> {
+  const canvas = document.createElement('canvas')
+  await composePageOntoCanvas(
+    canvas,
+    labelCanvas,
+    paperSize,
+    labelSize,
+    labelsPerPage,
+    placement,
+    applyBorder,
+    dpi,
+    gapX,
+    gapY,
+    spacingUnit,
+    margins,
+  )
+  return canvas.toDataURL('image/png')
+}
+
+function CustomDropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  placeholder = 'Select...',
+}: {
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+  placeholder?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedLabel = options.find((option) => option.value === value)?.label || placeholder
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+      >
+        <span>{selectedLabel}</span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={`h-5 w-5 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value)
+                setIsOpen(false)
+              }}
+              className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                option.value === value ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function PrintPreview() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { currentTemplate, loadTemplate, versions, loadVersions } = useTemplateStore()
-  const { objects, loadObjects, clearObjects, zoom, setZoom, canvasWidth, canvasHeight, setCanvasSize } = useDesignerStore()
+  const { objects, loadObjects, clearObjects, zoom, setZoom, setCanvasSize } = useDesignerStore()
 
   const previewWrapRef = useRef<HTMLDivElement>(null)
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const [copies, setCopies] = useState(1)
-  const [isExporting, setIsExporting] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [printers, setPrinters] = useState<Printer[]>([])
@@ -47,7 +388,41 @@ export default function PrintPreview() {
   const [printerLanguage, setPrinterLanguage] = useState<'pdf' | 'zpl' | 'epl' | 'tspl'>('pdf')
   const [statusMessage, setStatusMessage] = useState('')
 
-  const visibleObjects = useMemo(() => objects.filter((object) => object.visible), [objects])
+  const [paperSizeId, setPaperSizeId] = useState<PaperSizeId>('A4')
+  const [customPaperWidth, setCustomPaperWidth] = useState(210)
+  const [customPaperHeight, setCustomPaperHeight] = useState(297)
+  const [customPaperUnit, setCustomPaperUnit] = useState('mm')
+  const [labelsPerPage, setLabelsPerPage] = useState<LabelsPerPage>('1')
+  const [placement, setPlacement] = useState<Placement>('center')
+  const [applyBorder, setApplyBorder] = useState(false)
+  const [gapX, setGapX] = useState(0)
+  const [gapY, setGapY] = useState(0)
+  const [spacingUnit, setSpacingUnit] = useState('mm')
+  const [marginTop, setMarginTop] = useState(0)
+  const [marginBottom, setMarginBottom] = useState(0)
+  const [marginLeft, setMarginLeft] = useState(0)
+  const [marginRight, setMarginRight] = useState(0)
+
+  const [labelCanvas, setLabelCanvas] = useState<HTMLCanvasElement | null>(null)
+  const [isRenderingLabel, setIsRenderingLabel] = useState(false)
+  const [isRenderingPreview, setIsRenderingPreview] = useState(false)
+
+  const paperSize = useMemo(() => {
+    if (paperSizeId === 'Custom') {
+      return { width: customPaperWidth, height: customPaperHeight, unit: customPaperUnit }
+    }
+    return PAPER_SIZES[paperSizeId]
+  }, [paperSizeId, customPaperWidth, customPaperHeight, customPaperUnit])
+
+  const labelSize = useMemo(
+    () => ({
+      width: currentTemplate?.label_width || 0,
+      height: currentTemplate?.label_height || 0,
+      unit: currentTemplate?.unit || 'mm',
+    }),
+    [currentTemplate],
+  )
+
   const selectedPrinterDetails = useMemo(
     () => printers.find((printer) => printer.id === selectedPrinter),
     [printers, selectedPrinter],
@@ -55,7 +430,7 @@ export default function PrintPreview() {
 
   const loadPrinters = async () => {
     try {
-      const data = await window.electronAPI?.printers.list() || []
+      const data = (await window.electronAPI?.printers.list()) || []
       setPrinters(data)
       if (data.length > 0) setSelectedPrinter((current) => current || data[0].id)
     } catch (error: any) {
@@ -75,10 +450,11 @@ export default function PrintPreview() {
   useEffect(() => {
     if (!currentTemplate) return
     setCanvasSize(
-      unitToPx(currentTemplate.label_width, currentTemplate.unit, currentTemplate.dpi),
-      unitToPx(currentTemplate.label_height, currentTemplate.unit, currentTemplate.dpi),
+      toScreenPx(currentTemplate.label_width, currentTemplate.unit),
+      toScreenPx(currentTemplate.label_height, currentTemplate.unit),
     )
-    const currentVersion = versions.find((version) => version.id === currentTemplate.current_version_id) || versions[0]
+    const currentVersion =
+      versions.find((version) => version.id === currentTemplate.current_version_id) || versions[0]
     if (!currentVersion) return
     try {
       const canvas = JSON.parse(currentVersion.template_json)
@@ -88,149 +464,139 @@ export default function PrintPreview() {
     }
   }, [currentTemplate, versions])
 
+  useEffect(() => {
+    if (!currentTemplate) return
+    let canceled = false
+    setIsRenderingLabel(true)
+    renderToCanvas(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+      .then((canvas) => {
+        if (!canceled) setLabelCanvas(canvas)
+      })
+      .catch((error: any) => {
+        if (!canceled) setStatusMessage(`Could not render label: ${error.message}`)
+      })
+      .finally(() => {
+        if (!canceled) setIsRenderingLabel(false)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [objects, currentTemplate])
+
+  useEffect(() => {
+    if (!labelCanvas || !currentTemplate || !previewCanvasRef.current) return
+    let canceled = false
+    setIsRenderingPreview(true)
+    composePageOntoCanvas(
+      previewCanvasRef.current,
+      labelCanvas,
+      paperSize,
+      labelSize,
+      labelsPerPage,
+      placement,
+      applyBorder,
+      96,
+      gapX,
+      gapY,
+      spacingUnit,
+      { top: marginTop, bottom: marginBottom, left: marginLeft, right: marginRight },
+    )
+      .then(() => {
+        if (!canceled) setIsRenderingPreview(false)
+      })
+      .catch((error: any) => {
+        if (!canceled) setStatusMessage(`Could not render preview: ${error.message}`)
+        if (!canceled) setIsRenderingPreview(false)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [
+    labelCanvas,
+    paperSize,
+    labelSize,
+    labelsPerPage,
+    placement,
+    applyBorder,
+    gapX,
+    gapY,
+    spacingUnit,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    currentTemplate,
+  ])
+
+  const margins = useMemo(
+    () => ({ top: marginTop, bottom: marginBottom, left: marginLeft, right: marginRight }),
+    [marginTop, marginBottom, marginLeft, marginRight],
+  )
+
+  const labelPositions = useMemo(() => {
+    const pageWidthPx = toScreenPx(paperSize.width, paperSize.unit)
+    const pageHeightPx = toScreenPx(paperSize.height, paperSize.unit)
+    const labelWidthPx = toScreenPx(labelSize.width, labelSize.unit)
+    const labelHeightPx = toScreenPx(labelSize.height, labelSize.unit)
+    const gapXPx = toScreenPx(gapX, spacingUnit)
+    const gapYPx = toScreenPx(gapY, spacingUnit)
+    const marginsPx = {
+      top: toScreenPx(margins.top, spacingUnit),
+      bottom: toScreenPx(margins.bottom, spacingUnit),
+      left: toScreenPx(margins.left, spacingUnit),
+      right: toScreenPx(margins.right, spacingUnit),
+    }
+    if (labelsPerPage === '1') {
+      return [getSingleLabelPositionPx(placement, pageWidthPx, pageHeightPx, labelWidthPx, labelHeightPx, marginsPx)]
+    }
+    return getGridLabelPositionsPx(
+      labelsPerPage,
+      pageWidthPx,
+      pageHeightPx,
+      labelWidthPx,
+      labelHeightPx,
+      gapXPx,
+      gapYPx,
+      marginsPx,
+    )
+  }, [labelsPerPage, placement, paperSize, labelSize, gapX, gapY, spacingUnit, margins])
+
+  const visibleObjects = useMemo(() => objects.filter((object) => object.visible), [objects])
+
   const fitPreviewToPane = () => {
-    if (!previewWrapRef.current || !canvasWidth || !canvasHeight) return
+    if (!previewWrapRef.current || !paperSize.width || !paperSize.height) return
     const rect = previewWrapRef.current.getBoundingClientRect()
+    const pageScreenWidth = toScreenPx(paperSize.width, paperSize.unit)
+    const pageScreenHeight = toScreenPx(paperSize.height, paperSize.unit)
     const availableWidth = Math.max(240, rect.width - 96)
     const availableHeight = Math.max(240, rect.height - 96)
-    const nextZoom = Math.min(availableWidth / (canvasWidth + 40), availableHeight / (canvasHeight + 40), 2)
+    const nextZoom = Math.min(availableWidth / (pageScreenWidth + 40), availableHeight / (pageScreenHeight + 40), 2)
     setZoom(Math.max(0.1, Number(nextZoom.toFixed(2))))
   }
 
   useEffect(() => {
     const frame = requestAnimationFrame(fitPreviewToPane)
     return () => cancelAnimationFrame(frame)
-  }, [canvasWidth, canvasHeight])
+  }, [paperSize.width, paperSize.height, paperSize.unit])
 
   const handleDetectPrinters = async () => {
     setIsDiscovering(true)
     setStatusMessage('Detecting printers...')
     try {
-      const detected = await window.electronAPI?.printers.discover() || []
+      const detected = (await window.electronAPI?.printers.discover()) || []
       for (const printer of detected) {
         await window.electronAPI?.printers.registerDiscovered(printer)
       }
       await loadPrinters()
-      setStatusMessage(detected.length ? `Detected ${detected.length} printer${detected.length === 1 ? '' : 's'}.` : 'No new printers were detected.')
+      setStatusMessage(
+        detected.length
+          ? `Detected ${detected.length} printer${detected.length === 1 ? '' : 's'}.`
+          : 'No new printers were detected.',
+      )
     } catch (error: any) {
       setStatusMessage(`Printer detection failed: ${error.message}`)
     } finally {
       setIsDiscovering(false)
-    }
-  }
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
-      reader.onerror = () => reject(reader.error || new Error('Could not read exported file data.'))
-      reader.readAsDataURL(blob)
-    })
-  }
-
-  const saveBase64File = async (base64Content: string, filename: string, extension: string, mimeType: string) => {
-    const result = await window.electronAPI?.app.saveFile({
-      title: `Save ${extension.replace('.', '').toUpperCase()}`,
-      defaultPath: filename,
-      filters: [{ name: `${extension.replace('.', '').toUpperCase()} files`, extensions: [extension.replace('.', '')] }],
-      extension,
-      showDialog: true,
-      base64Content,
-      mimeType,
-    })
-    if (result?.success === false) {
-      if (result.canceled) return null
-      throw new Error(result.error || 'Could not save the file.')
-    }
-    return result?.filePath || filename
-  }
-
-  const handleExportPNG = async () => {
-    if (!currentTemplate) return
-    setIsExporting(true)
-    setStatusMessage('Exporting PNG...')
-    try {
-      const dataUrl = await renderToPNG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
-      const filePath = await saveBase64File(dataUrl.split(',')[1] || '', `${currentTemplate.name || 'label'}.png`, '.png', 'image/png')
-      setStatusMessage(filePath ? `PNG saved to ${filePath}.` : 'PNG export cancelled.')
-    } catch (error: any) {
-      setStatusMessage(`PNG export failed: ${error.message}`)
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  const handleExportJPEG = async () => {
-    if (!currentTemplate) return
-    setIsExporting(true)
-    setStatusMessage('Exporting JPEG...')
-    try {
-      const dataUrl = await renderToJPEG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
-      const filePath = await saveBase64File(dataUrl.split(',')[1] || '', `${currentTemplate.name || 'label'}.jpg`, '.jpg', 'image/jpeg')
-      setStatusMessage(filePath ? `JPEG saved to ${filePath}.` : 'JPEG export cancelled.')
-    } catch (error: any) {
-      setStatusMessage(`JPEG export failed: ${error.message}`)
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  const handleExportPDF = async () => {
-    if (!currentTemplate) return
-    setIsExporting(true)
-    setStatusMessage('Exporting PDF...')
-    try {
-      const blob = await renderToPDF(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit, currentTemplate.name || 'label')
-      const filePath = await saveBase64File(await blobToBase64(blob), `${currentTemplate.name || 'label'}.pdf`, '.pdf', 'application/pdf')
-      setStatusMessage(filePath ? `PDF saved to ${filePath}.` : 'PDF export cancelled.')
-    } catch (error: any) {
-      setStatusMessage(`PDF export failed: ${error.message}`)
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  const handleExportLabelForge = async () => {
-    if (!currentTemplate) return
-    setIsExporting(true)
-    setStatusMessage('Exporting LabelForge Studio file...')
-    try {
-      const currentVersion = versions.find((version) => version.id === currentTemplate.current_version_id) || versions[0]
-      const canvas = currentVersion?.template_json ? JSON.parse(currentVersion.template_json) : {
-        width: canvasWidth,
-        height: canvasHeight,
-        unit: currentTemplate.unit,
-        dpi: currentTemplate.dpi,
-        objects,
-        dataSources: [],
-        printSettings: { copies: 1, printerLanguage: 'pdf' },
-      }
-      const exportData = {
-        format: 'labelforge-template',
-        formatVersion: 1,
-        savedAt: new Date().toISOString(),
-        template: currentTemplate,
-        canvas,
-      }
-      const result = await window.electronAPI?.app.saveFile({
-        title: 'Save LabelForge Studio File',
-        defaultPath: `${currentTemplate.name || 'label'}.lfx`,
-        filters: [
-          { name: 'LabelForge Studio', extensions: ['lfx'] },
-          { name: 'JSON Document', extensions: ['json'] },
-        ],
-        extension: '.lfx',
-        showDialog: true,
-        content: JSON.stringify(exportData, null, 2),
-      })
-      if (result?.success === false && !result.canceled) {
-        throw new Error(result.error || 'Could not save the file.')
-      }
-      setStatusMessage(result?.canceled ? 'LabelForge Studio export cancelled.' : `LabelForge Studio file saved to ${result?.filePath}.`)
-    } catch (error: any) {
-      setStatusMessage(`LabelForge Studio export failed: ${error.message}`)
-    } finally {
-      setIsExporting(false)
     }
   }
 
@@ -248,14 +614,34 @@ export default function PrintPreview() {
     try {
       let result
       if (printerLanguage === 'pdf') {
-        const dataUrl = await renderToPNG(objects, currentTemplate.label_width, currentTemplate.label_height, currentTemplate.dpi, currentTemplate.unit)
+        if (!labelCanvas) throw new Error('Preview is not ready yet.')
+        const printLabelCanvas = await renderToCanvas(
+          objects,
+          currentTemplate.label_width,
+          currentTemplate.label_height,
+          currentTemplate.dpi,
+          currentTemplate.unit,
+        )
+        const dataUrl = await renderComposedPage(
+          printLabelCanvas,
+          paperSize,
+          labelSize,
+          labelsPerPage,
+          placement,
+          applyBorder,
+          currentTemplate.dpi,
+          gapX,
+          gapY,
+          spacingUnit,
+          margins,
+        )
         result = await window.electronAPI?.app.printImage({
           dataUrl,
           printerName: selectedPrinterDetails?.driver_name || selectedPrinterDetails?.name,
           copies: safeCopies,
-          width: currentTemplate.label_width,
-          height: currentTemplate.label_height,
-          unit: currentTemplate.unit,
+          width: paperSize.width,
+          height: paperSize.height,
+          unit: paperSize.unit,
         })
       } else {
         result = await window.electronAPI?.printJobs.create({
@@ -276,92 +662,10 @@ export default function PrintPreview() {
     }
   }
 
-  const renderObject = (obj: LabelObject) => {
-    switch (obj.type) {
-      case 'text':
-        return <RichTextRenderer key={obj.id} object={obj as TextObject} />
-      case 'barcode': {
-        const barcode = obj as BarcodeObject
-        return (
-          <BarcodeRenderer
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            value={barcode.value}
-            barcodeType={barcode.barcodeType}
-            width={obj.width}
-            height={obj.height}
-            options={{
-              showHumanReadable: barcode.showHumanReadable,
-              moduleWidth: barcode.moduleWidth,
-              barcodeHeight: barcode.barcodeHeight,
-              quietZone: barcode.quietZone,
-              foregroundColor: barcode.foregroundColor,
-              backgroundColor: barcode.backgroundColor,
-            }}
-          />
-        )
-      }
-      case 'qrcode': {
-        const qr = obj as QRCodeObject
-        return (
-          <BarcodeRenderer
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            value={qr.value}
-            barcodeType={qr.barcodeType || 'QRCode'}
-            width={obj.width}
-            height={obj.height}
-            options={{
-              errorCorrectionLevel: qr.errorCorrectionLevel,
-              quietZone: qr.quietZone,
-              foregroundColor: qr.foregroundColor,
-              backgroundColor: qr.backgroundColor,
-            }}
-          />
-        )
-      }
-      case 'shape': {
-        const shape = obj as ShapeObject
-        return <ShapeRenderer key={obj.id} object={shape} stroke={shape.borderColor} strokeWidth={shape.borderWidth} />
-      }
-      case 'line': {
-        const line = obj as LineObjType
-        const lineHeight = getLineVisualHeight(line)
-        return (
-          <Group key={obj.id} x={obj.x + obj.width / 2} y={obj.y + lineHeight / 2} rotation={obj.rotation}>
-            <Line points={[-obj.width / 2, 0, obj.width / 2, 0]} stroke={line.lineColor} strokeWidth={line.lineThickness} />
-          </Group>
-        )
-      }
-      case 'image': {
-        const image = obj as ImageObject
-        return (
-          <ImageRenderer
-            key={obj.id}
-            source={image.source}
-            x={obj.x}
-            y={obj.y}
-            width={obj.width}
-            height={obj.height}
-            rotation={obj.rotation}
-            opacity={obj.opacity}
-            maintainAspectRatio={image.maintainAspectRatio}
-            fitMode={image.fitMode}
-            cropX={image.cropX}
-            cropY={image.cropY}
-            flipHorizontal={image.flipHorizontal}
-            flipVertical={image.flipVertical}
-          />
-        )
-      }
-      default:
-        return <Rect key={obj.id} x={obj.x} y={obj.y} width={obj.width} height={obj.height} fill="#E0E0E0" stroke="#999" strokeWidth={1} />
-    }
-  }
+  const paperSizeOptions = useMemo(
+    () => Object.entries(PAPER_SIZES).map(([value, item]) => ({ value: value as PaperSizeId, label: item.label })),
+    [],
+  )
 
   if (!currentTemplate) {
     return (
@@ -372,19 +676,33 @@ export default function PrintPreview() {
   }
 
   const labelSizeText = `${currentTemplate.label_width}${currentTemplate.unit} x ${currentTemplate.label_height}${currentTemplate.unit}`
+  const pageScreenWidth = toScreenPx(paperSize.width, paperSize.unit)
+  const pageScreenHeight = toScreenPx(paperSize.height, paperSize.unit)
+
+  const labelCount = labelPositions.length
+  const totalLabels = labelCount * clampCopies(copies)
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-slate-200">
       <div className="min-h-0 flex-1 overflow-hidden">
         <div ref={previewWrapRef} className="h-full min-h-0 overflow-auto px-12 py-4">
-          <div className="flex min-h-full justify-center">
-            <div className="bg-white p-10 shadow-[0_2px_12px_rgba(0,0,0,0.35)] ring-1 ring-black/20">
-              <Stage width={canvasWidth * zoom + 40} height={canvasHeight * zoom + 40} scale={{ x: zoom, y: zoom }}>
-                <Layer offsetX={-20} offsetY={-20}>
-                  <Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill="white" />
-                  {visibleObjects.map(renderObject)}
-                </Layer>
-              </Stage>
+          <div className="flex min-h-full items-center justify-center">
+            <div className="relative" style={{ width: pageScreenWidth * zoom, height: pageScreenHeight * zoom }}>
+              <canvas
+                ref={previewCanvasRef}
+                className="block bg-white shadow-[0_2px_12px_rgba(0,0,0,0.35)] ring-1 ring-black/20"
+                style={{
+                  width: pageScreenWidth,
+                  height: pageScreenHeight,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
+                }}
+              />
+              {(isRenderingLabel || isRenderingPreview || !labelCanvas) && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
+                  {isRenderingLabel || isRenderingPreview ? 'Rendering preview...' : 'Could not render preview'}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -393,7 +711,7 @@ export default function PrintPreview() {
       <aside className="flex w-[420px] min-w-[420px] flex-col border-l border-slate-200 bg-white text-slate-950 shadow-[-8px_0_18px_rgba(15,23,42,0.08)]">
         <div className="flex items-center justify-between px-7 py-6">
           <h1 className="text-base font-semibold">Print</h1>
-          <div className="text-sm font-semibold text-slate-600">1 sheet of paper</div>
+          <div className="text-sm font-semibold text-slate-600">{totalLabels} label{totalLabels === 1 ? '' : 's'} total</div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-6">
@@ -402,7 +720,9 @@ export default function PrintPreview() {
               <label className="text-sm font-semibold text-slate-600">Destination</label>
               <div>
                 {printers.length === 0 ? (
-                  <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">No registered printers</div>
+                  <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    No registered printers
+                  </div>
                 ) : (
                   <select
                     value={selectedPrinter}
@@ -460,43 +780,249 @@ export default function PrintPreview() {
               <span>More settings</span>
               <span className="text-lg leading-none">⌄</span>
             </button>
-            <div className="mt-4 space-y-5">
-              <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
-                <label className="text-sm font-semibold text-slate-600">Scale</label>
-                <select
-                  value={Math.round(zoom * 100)}
-                  onChange={(event) => setZoom(Number(event.target.value) / 100)}
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value={25}>25%</option>
-                  <option value={50}>50%</option>
-                  <option value={75}>75%</option>
-                  <option value={100}>100%</option>
-                  <option value={150}>150%</option>
-                  <option value={200}>200%</option>
-                </select>
+            <div className="mt-4 space-y-6">
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-800">Paper & Label</h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                    <label className="text-sm font-semibold text-slate-600">Paper size</label>
+                    <SearchableSelect
+                      value={paperSizeId}
+                      options={paperSizeOptions}
+                      placeholder="Select paper size"
+                      searchPlaceholder="Search paper or label sizes..."
+                      onChange={(value) => setPaperSizeId(value as PaperSizeId)}
+                    />
+                  </div>
+
+                  {paperSizeId === 'Custom' && (
+                    <>
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-600">Width</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={customPaperWidth}
+                          onChange={(event) => setCustomPaperWidth(Math.max(1, Number(event.target.value) || 1))}
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-600">Height</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={customPaperHeight}
+                          onChange={(event) => setCustomPaperHeight(Math.max(1, Number(event.target.value) || 1))}
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-600">Unit</label>
+                        <CustomDropdown
+                          value={customPaperUnit}
+                          options={[
+                            { value: 'mm', label: 'mm' },
+                            { value: 'cm', label: 'cm' },
+                            { value: 'in', label: 'in' },
+                          ]}
+                          onChange={(value) => setCustomPaperUnit(value)}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-4">
+                    <label className="text-sm font-semibold text-slate-600">Label size</label>
+                    <div className="space-y-1 text-sm text-slate-700">
+                      <div>{labelSizeText}</div>
+                      <div>{currentTemplate.dpi} DPI</div>
+                      <div>{visibleObjects.length} visible item{visibleObjects.length === 1 ? '' : 's'}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
-                <label className="text-sm font-semibold text-slate-600">Format</label>
-                <select
-                  value={printerLanguage}
-                  onChange={(event) => setPrinterLanguage(event.target.value as any)}
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="pdf">Auto / PDF</option>
-                  <option value="zpl">ZPL</option>
-                  <option value="epl">EPL</option>
-                  <option value="tspl">TSPL</option>
-                </select>
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-800">Layout</h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                    <label className="text-sm font-semibold text-slate-600">Labels per page</label>
+                    <CustomDropdown
+                      value={labelsPerPage}
+                      options={LABELS_PER_PAGE_OPTIONS}
+                      onChange={(value) => setLabelsPerPage(value)}
+                    />
+                  </div>
+
+                  {labelsPerPage === '1' && (
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                      <label className="text-sm font-semibold text-slate-600">Placement</label>
+                      <CustomDropdown
+                        value={placement}
+                        options={PLACEMENT_OPTIONS}
+                        onChange={(value) => setPlacement(value)}
+                      />
+                    </div>
+                  )}
+
+                  {labelsPerPage !== '1' && (
+                    <>
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-600">Horizontal gap</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={gapX}
+                            onChange={(event) => setGapX(Math.max(0, Number(event.target.value) || 0))}
+                            className="h-10 w-20 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <span className="text-sm text-slate-600">{spacingUnit}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-600">Vertical gap</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={gapY}
+                            onChange={(event) => setGapY(Math.max(0, Number(event.target.value) || 0))}
+                            className="h-10 w-20 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <span className="text-sm text-slate-600">{spacingUnit}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-800">Margins</h3>
+                  <select
+                    value={spacingUnit}
+                    onChange={(event) => setSpacingUnit(event.target.value)}
+                    className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="mm">mm</option>
+                    <option value="cm">cm</option>
+                    <option value="in">in</option>
+                    <option value="px">px</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-600">Top</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={marginTop}
+                        onChange={(event) => setMarginTop(Math.max(0, Number(event.target.value) || 0))}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <span className="text-sm text-slate-600">{spacingUnit}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-600">Bottom</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={marginBottom}
+                        onChange={(event) => setMarginBottom(Math.max(0, Number(event.target.value) || 0))}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <span className="text-sm text-slate-600">{spacingUnit}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-600">Left</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={marginLeft}
+                        onChange={(event) => setMarginLeft(Math.max(0, Number(event.target.value) || 0))}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <span className="text-sm text-slate-600">{spacingUnit}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-600">Right</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={marginRight}
+                        onChange={(event) => setMarginRight(Math.max(0, Number(event.target.value) || 0))}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                      <span className="text-sm text-slate-600">{spacingUnit}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-800">Appearance</h3>
+                <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                  <label className="text-sm font-semibold text-slate-600">Border</label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={applyBorder}
+                      onChange={(event) => setApplyBorder(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-700">Apply border around labels</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-800">Print Options</h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                    <label className="text-sm font-semibold text-slate-600">Scale</label>
+                    <select
+                      value={Math.round(zoom * 100)}
+                      onChange={(event) => setZoom(Number(event.target.value) / 100)}
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value={25}>25%</option>
+                      <option value={50}>50%</option>
+                      <option value={75}>75%</option>
+                      <option value={100}>100%</option>
+                      <option value={150}>150%</option>
+                      <option value={200}>200%</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
+                    <label className="text-sm font-semibold text-slate-600">Format</label>
+                    <select
+                      value={printerLanguage}
+                      onChange={(event) => setPrinterLanguage(event.target.value as any)}
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="pdf">Auto / PDF</option>
+                      <option value="zpl">ZPL</option>
+                      <option value="epl">EPL</option>
+                      <option value="tspl">TSPL</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-4 text-sm">
                 <div className="font-semibold text-slate-600">Details</div>
                 <div className="space-y-1 text-slate-600">
-                  <div>{labelSizeText}</div>
-                  <div>{currentTemplate.dpi} DPI</div>
-                  <div>{visibleObjects.length} visible item{visibleObjects.length === 1 ? '' : 's'}</div>
                   <div>{selectedPrinterDetails?.status || 'No printer selected'}</div>
                 </div>
               </div>
@@ -508,13 +1034,6 @@ export default function PrintPreview() {
               >
                 {isDiscovering ? 'Detecting...' : 'Detect Printers'}
               </button>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={handleExportLabelForge} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">LabelForge</button>
-                <button onClick={handleExportPDF} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">PDF</button>
-                <button onClick={handleExportJPEG} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">JPEG</button>
-                <button onClick={handleExportPNG} disabled={isExporting} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">PNG</button>
-              </div>
             </div>
           </section>
 
@@ -534,7 +1053,7 @@ export default function PrintPreview() {
           </button>
           <button
             onClick={handlePrint}
-            disabled={isPrinting || !selectedPrinter}
+            disabled={isPrinting || !selectedPrinter || isRenderingLabel || !labelCanvas}
             className="rounded-full border border-blue-600 bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isPrinting ? 'Sending...' : 'Print'}

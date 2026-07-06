@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Stage, Layer, Rect, Text, Line, Group, Transformer, useStrictMode as setKonvaStrictMode } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject, DataSourceConfig, Template, TemplateCanvas } from '../types'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject, DataSourceConfig, Template, TemplateCanvas, DateTimeObject, CounterObject } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import PropertiesPanel from '../designer/PropertiesPanel'
 import LayersPanel from '../designer/LayersPanel'
@@ -17,6 +17,7 @@ import ShapeRenderer from '../designer/ShapeRenderer'
 import RichTextRenderer from '../designer/RichTextRenderer'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { renderToJPEG, renderToPDF, renderToPNG } from '../utils/labelRenderer'
+import { formatDateTimeObject, formatCounter } from '../utils/dynamicFields'
 import NewTemplateWizard from './template-designer/NewTemplateWizard'
 import ObjectContextMenu, { type ImageContextAction } from './template-designer/ObjectContextMenu'
 import DesignerStatusBar from './template-designer/DesignerStatusBar'
@@ -762,11 +763,14 @@ export default function TemplateDesigner() {
         } as any
         break
       case 'datetime':
+        const now = new Date()
         obj = {
           id, type: 'datetime', name: `Date/Time ${objects.length + 1}`,
           x: 20, y: 20, width: 120, height: 30, rotation: 0,
           visible: true, locked: false, opacity: 1,
           format: 'dd/MM/yyyy', offset: 0, offsetUnit: 'days',
+          baseDate: now.toISOString().split('T')[0],
+          baseTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
         } as any
         ;(obj as any).data_source_binding = 'static'
         ;(obj as any).print_condition = ''
@@ -1160,8 +1164,8 @@ export default function TemplateDesigner() {
     }])
   }, [canvasHeight, canvasWidth, getNearestRotationSnap, getSelectionBounds])
 
-  const snapNodePosition = useCallback((obj: LabelObject, node: any) => {
-    if (!snapToGrid) {
+  const snapNodePosition = useCallback((obj: LabelObject, node: any, disableSnap = false) => {
+    if (!snapToGrid || disableSnap) {
       setSmartGuides([])
       return
     }
@@ -1176,6 +1180,7 @@ export default function TemplateDesigner() {
 
   const handleObjectDragMove = useCallback((obj: LabelObject, e: any) => {
     const node = e.currentTarget
+    const disableSnap = e.evt?.altKey === true
     if (!multiDragRef.current) {
       const selectedIds = selectedObjectIds.includes(obj.id) && selectedObjectIds.length > 1
         ? selectedObjectIds
@@ -1191,7 +1196,7 @@ export default function TemplateDesigner() {
       }
     }
 
-    snapNodePosition(obj, node)
+    snapNodePosition(obj, node, disableSnap)
     const drag = multiDragRef.current
     const deltaX = node.x() - drag.startX
     const deltaY = node.y() - drag.startY
@@ -1213,7 +1218,8 @@ export default function TemplateDesigner() {
 
   const handleObjectDragEnd = useCallback((obj: LabelObject, e: any) => {
     const node = e.currentTarget
-    snapNodePosition(obj, node)
+    const disableSnap = e.evt?.altKey === true
+    snapNodePosition(obj, node, disableSnap)
     const drag = multiDragRef.current
     const objectIds = drag?.objectIds || [obj.id]
     const deltaX = node.x() - (drag?.startX ?? obj.x)
@@ -1247,6 +1253,20 @@ export default function TemplateDesigner() {
     transformer.nodes(nodes)
     transformer.getLayer()?.batchDraw()
   }, [selectedObjectIds, objects])
+
+  useEffect(() => {
+    const transformer = transformerRef.current
+    if (!transformer) return
+    const baseAnchorSize = 10
+    const baseStrokeWidth = 1.5
+    const baseRotateOffset = 28
+    transformer.anchorSize(baseAnchorSize / zoom)
+    transformer.borderStrokeWidth(baseStrokeWidth / zoom)
+    transformer.anchorStrokeWidth(baseStrokeWidth / zoom)
+    transformer.rotateAnchorOffset(baseRotateOffset / zoom)
+    transformer.forceUpdate()
+    transformer.getLayer()?.batchDraw()
+  }, [zoom])
 
   const handleTransformEnd = useCallback(() => {
     const transformer = transformerRef.current
@@ -1513,8 +1533,8 @@ export default function TemplateDesigner() {
         )
       }
       case 'counter': {
-        const cntObj = obj as any
-        const display = `${cntObj.prefix || ''}${String(cntObj.startValue ?? 1).padStart(cntObj.padding ?? 4, '0')}${cntObj.suffix || ''}`
+        const cntObj = obj as CounterObject
+        const display = formatCounter(cntObj)
         return (
           <Group
             id={getNodeId(obj.id)}
@@ -1554,8 +1574,8 @@ export default function TemplateDesigner() {
         )
       }
       case 'datetime': {
-        const dtObj = obj as any
-        const dateStr = new Date().toLocaleDateString()
+        const dtObj = obj as DateTimeObject
+        const dateStr = formatDateTimeObject(dtObj)
         return (
           <Group
             id={getNodeId(obj.id)}
@@ -1582,7 +1602,7 @@ export default function TemplateDesigner() {
               shadowOpacity={isLayerFlashing ? 0.35 : 0}
             />
             <Text
-              text={dtObj.format ? `{{${dtObj.format}}}` : dateStr}
+              text={dateStr}
               fontSize={12}
               fill="#333"
               width={obj.width}
@@ -1879,14 +1899,14 @@ export default function TemplateDesigner() {
                           'bottom-left',
                           'middle-left',
                         ]}
-                        anchorSize={8 / zoom}
-                        anchorCornerRadius={2}
+                        anchorSize={10 / zoom}
+                        anchorCornerRadius={2 / zoom}
                         borderStroke="#2563eb"
-                        borderStrokeWidth={1 / zoom}
+                        borderStrokeWidth={1.5 / zoom}
                         anchorStroke="#2563eb"
                         anchorFill="#ffffff"
-                        anchorStrokeWidth={1 / zoom}
-                        rotateAnchorOffset={24 / zoom}
+                        anchorStrokeWidth={1.5 / zoom}
+                        rotateAnchorOffset={28 / zoom}
                         rotateAnchorCursor={ROTATE_CURSOR}
                         rotationSnaps={ROTATION_SNAPS}
                         rotationSnapTolerance={ROTATION_SNAP_TOLERANCE}
