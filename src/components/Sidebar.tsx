@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faChevronDown,
@@ -11,6 +11,7 @@ import {
   faTags,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import appLogoUrl from '../assets/app_logo.png'
 
 type MenuItem = { path: string; label: string; description: string; icon: IconDefinition }
 
@@ -89,6 +90,7 @@ function NavigationMenu({
 
 export default function Sidebar() {
   const location = useLocation()
+  const navigate = useNavigate()
   const dashboardActive = location.pathname.startsWith('/app/dashboard')
   const settingsActive = location.pathname.startsWith('/app/settings')
   const designActive = location.pathname.startsWith('/app/templates')
@@ -100,11 +102,17 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-[72px] shrink-0 items-center border-b border-slate-800 bg-[var(--sidebar-bg)] px-5 text-[var(--sidebar-text)] shadow-sm">
-      <div className="flex h-12 shrink-0 cursor-pointer items-center gap-3 border-r border-slate-800 pr-5" onClick={() => (window.location.href = '/')}>\n        <img src="/app_logo.png" alt="LabelForge Studio" className="h-9 w-9 rounded-lg object-cover shadow-lg shadow-blue-950/30" />\n        <div className="flex flex-col">
+      <button
+        type="button"
+        className="flex h-12 shrink-0 items-center gap-3 border-r border-slate-800 pr-5 text-left"
+        onClick={() => navigate('/')}
+      >
+        <img src={appLogoUrl} alt="LabelForge Studio" className="h-9 w-9 rounded-lg object-cover shadow-lg shadow-blue-950/30" />
+        <div className="flex flex-col">
           <span className="text-sm font-semibold text-white">LabelForge</span>
           <span className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Studio</span>
         </div>
-      </div>
+      </button>
 
       <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-visible px-5">
         <NavLink to="/app/dashboard" className={linkClass(dashboardActive)}>

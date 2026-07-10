@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import appLogoUrl from '../assets/app_logo.png'
 
 const navigation = [
   { label: 'Dashboard', path: '/app/dashboard', icon: dashboardIcon },
@@ -18,7 +19,7 @@ const quickActions = [
   },
   {
     label: 'Open File',
-    description: 'Import a .lfx.json template',
+    description: 'Import a .lfx template',
     icon: folderOpenIcon,
     color: 'emerald',
     onClick: 'open',
@@ -66,7 +67,8 @@ export default function Welcome() {
       const result = await window.electronAPI?.app.selectFile({
         title: 'Open LabelForge Template',
         filters: [
-          { name: 'LabelForge Template', extensions: ['lfx.json'] },
+          { name: 'LabelForge Template', extensions: ['lfx'] },
+          { name: 'Legacy LabelForge JSON', extensions: ['lfx.json'] },
           { name: 'JSON', extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] },
         ],
@@ -75,7 +77,7 @@ export default function Welcome() {
         const content = await window.electronAPI?.app.readFile(result)
         if (content) {
           const data = JSON.parse(content)
-          const imported = await window.electronAPI?.templates.import(data)
+          const imported = await window.electronAPI?.templates.importTemplate(data)
           if (imported?.success && imported?.template) {
             navigate(`/app/templates/${imported.template.id}/edit`)
           }
@@ -101,7 +103,7 @@ export default function Welcome() {
       {/* Top navigation */}
       <header className="flex items-center justify-between border-b border-slate-700/50 bg-slate-900/50 px-6 py-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <img src="/app_logo.png" alt="LabelForge Studio" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
+          <img src={appLogoUrl} alt="LabelForge Studio" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
           <span className="text-lg font-bold text-white">LabelForge Studio</span>
         </div>
         <nav className="hidden items-center gap-1 md:flex">

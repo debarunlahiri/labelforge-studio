@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faMagnifyingGlass, faTableCells, faList, faXmark, faCheck } from '@fortawesome/free-solid-svg-icons'
 import bwipjs from 'bwip-js'
 import type { SymbologyGroup, SymbologyOption } from './symbologies'
-import { getBwipSymbology, isQrFamilySymbology } from './symbologies'
+import { getBwipSymbology, getSampleValueForSymbology, isQrFamilySymbology } from './symbologies'
 
 interface BarcodeSymbologyModalProps {
   isOpen: boolean
@@ -15,39 +15,21 @@ interface BarcodeSymbologyModalProps {
 
 type ViewMode = 'grid' | 'list'
 
-const SAMPLE_VALUES: Record<string, string> = {
-  QRCode: 'https://labelforge.io',
-  MicroQRCode: 'A1B2C3',
-  iQRCode: 'https://labelforge.io',
-  GS1QRCode: '(01)12345678901234',
-  GS1DigitalLinkQRCode: 'https://id.example.com/01/12345678901234',
-  DataMatrix: 'ABC123456789',
-  GS1DataMatrix: '(01)12345678901234',
-  AztecCode: 'ABC123456789',
-  AztecRune: '1',
-  DotCode: 'ABC123456789',
-  HanXinCode: 'ABC123456789',
-  Maxicode: '1234567890',
-  PDF417: 'ABC1234567890',
-  CompactPDF417: 'ABC1234567890',
-  PDF417Truncated: 'ABC1234567890',
-  MicroPDF417: 'ABC1234567890',
-  CodablockF: 'ABC1234567890',
-  Code16K: 'ABC1234567890',
-  Code49: 'ABC1234567890',
-  GS1DataBarExpandedStacked: '(01)12345678901234',
-  GS1DataBarStacked: '(01)12345678901234',
-  GS1DataBarStackedOmnidirectional: '(01)12345678901234',
-  TLC39MicroPDF417: '(01)12345678901234',
-}
-
-function getSampleValue(option: SymbologyOption): string {
-  return SAMPLE_VALUES[option.value] ?? '123456789012'
+function fallbackPreview(option: SymbologyOption): string {
+  const seed = option.value.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  const bars = Array.from({ length: 28 }, (_, index) => {
+    const width = ((seed + index * 7) % 3) + 1
+    const x = 8 + index * 4
+    const opacity = ((seed + index) % 5) === 0 ? 0.35 : 1
+    return `<rect x="${x}" y="10" width="${width}" height="34" fill="#0f172a" opacity="${opacity}"/>`
+  }).join('')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="56" viewBox="0 0 128 56"><rect width="128" height="56" rx="6" fill="#fff"/><rect x="0.5" y="0.5" width="127" height="55" rx="5.5" fill="none" stroke="#e2e8f0"/>${bars}</svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
 function renderBarcodePreview(option: SymbologyOption): string {
   if (option.supported === false || !option.bwip) {
-    return ''
+    return fallbackPreview(option)
   }
   try {
     const canvas = document.createElement('canvas')
@@ -55,7 +37,7 @@ function renderBarcodePreview(option: SymbologyOption): string {
     const is2D = isQrFamilySymbology(option.value) || ['datamatrix', 'gs1datamatrix', 'azteccode', 'aztecrune', 'dotcode', 'hanxin', 'maxicode', 'pdf417', 'pdf417compact', 'pdf417truncated', 'micropdf417', 'codablockf', 'code16k', 'code49'].includes(bwipType)
     const opts: any = {
       bcid: bwipType,
-      text: getSampleValue(option),
+      text: getSampleValueForSymbology(option.value),
       scale: is2D ? 2 : 1,
       height: is2D ? 40 : 24,
       includetext: false,
@@ -68,7 +50,7 @@ function renderBarcodePreview(option: SymbologyOption): string {
     bwipjs.toCanvas(canvas, opts)
     return canvas.toDataURL('image/png')
   } catch {
-    return ''
+    return fallbackPreview(option)
   }
 }
 
@@ -116,9 +98,7 @@ function SymbologyCard({
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-100 bg-white">
           {previewUrl ? (
             <img src={previewUrl} alt="" className="max-h-8 max-w-8 object-contain" />
-          ) : (
-            <span className="text-[9px] text-slate-400">{isUnsupported ? '—' : '…'}</span>
-          )}
+          ) : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-xs font-medium">{option.label}</span>
@@ -145,9 +125,7 @@ function SymbologyCard({
       <span className="flex h-16 w-full items-center justify-center rounded-lg border border-slate-100 bg-white">
         {previewUrl ? (
           <img src={previewUrl} alt="" className="max-h-12 max-w-full object-contain" />
-        ) : (
-          <span className="text-[10px] text-slate-400">{isUnsupported ? 'Listed' : 'Preview'}</span>
-        )}
+          ) : null}
       </span>
       <span className="w-full text-center">
         <span className="block text-[11px] font-medium leading-tight">{option.label}</span>

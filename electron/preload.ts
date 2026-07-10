@@ -74,6 +74,14 @@ const api = {
     selectFile: (options: any) => ipcRenderer.invoke('app:selectFile', options),
     readFile: (filePath: string) => ipcRenderer.invoke('app:readFile', filePath),
     saveFile: (options: any) => ipcRenderer.invoke('app:saveFile', options),
+    getPendingOpenTemplateFile: () => ipcRenderer.invoke('app:getPendingOpenTemplateFile'),
+    clearPendingOpenTemplateFile: (filePath?: string) =>
+      ipcRenderer.invoke('app:clearPendingOpenTemplateFile', filePath),
+    onOpenTemplateFile: (callback: (filePath: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
+      ipcRenderer.on('app:openTemplateFile', listener)
+      return () => ipcRenderer.removeListener('app:openTemplateFile', listener)
+    },
     printImage: (options: any) => ipcRenderer.invoke('app:printImage', options),
   },
 }

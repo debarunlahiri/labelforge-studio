@@ -11,7 +11,7 @@ import type {
 } from '../types'
 import { styleAt } from '../designer/richText'
 import bwipjs from 'bwip-js'
-import { getBwipSymbology, isQrFamilySymbology, symbologyByValue } from '../designer/symbologies'
+import { getBwipSymbology, getSampleValueForSymbology, isQrFamilySymbology, symbologyByValue } from '../designer/symbologies'
 import { formatDateTimeObject, formatCounter } from './dynamicFields'
 
 function convertToDots(value: number, unit: string, dpi: number): number {
@@ -66,11 +66,11 @@ async function renderBarcodeImage(
   const symbology = symbologyByValue[barcodeType]
   if (symbology?.supported === false) return null
 
-  const render = async (bwipType: string) => {
+  const render = async (bwipType: string, text = value) => {
     const barcodeCanvas = document.createElement('canvas')
     const bwipOptions: any = {
       bcid: bwipType,
-      text: value,
+      text,
       scale: 3,
       width,
       height: options.barcodeHeight || height,
@@ -91,6 +91,14 @@ async function renderBarcodeImage(
   try {
     return await render(bwipType)
   } catch {
+    const sampleValue = getSampleValueForSymbology(barcodeType)
+    if (sampleValue && sampleValue !== value) {
+      try {
+        return await render(bwipType, sampleValue)
+      } catch {
+        // Continue to the QR fallback where applicable.
+      }
+    }
     if (isQrFamilySymbology(barcodeType) && bwipType !== 'qrcode') {
       try {
         return await render('qrcode')

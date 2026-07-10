@@ -26,7 +26,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, ImageObject, DateTimeObject, CounterObject } from '../types'
-import { barcodeSymbologyGroups, qrSymbologyGroups, getSymbologyLabel } from './symbologies'
+import { barcodeSymbologyGroups, qrSymbologyGroups, getSampleValueForSymbology, getSymbologyLabel } from './symbologies'
 import SearchableSelect from '../components/SearchableSelect'
 import { applyStyleRange, shiftRunsForTextChange, styleAt, type TextStyle } from './richText'
 import { formatDateTimeObject, formatCounter, hasTimeFormat } from '../utils/dynamicFields'
@@ -353,6 +353,14 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
   const handleChange = (key: string, value: any) => {
     onUpdate({ [key]: value } as any)
   }
+  const handleBarcodeTypeChange = (value: string) => {
+    const currentValue = 'value' in object ? String(object.value || '') : ''
+    const shouldReplaceValue = !currentValue || currentValue === '123456789012'
+    onUpdate({
+      barcodeType: value,
+      ...(shouldReplaceValue ? { value: getSampleValueForSymbology(value) } : {}),
+    } as Partial<LabelObject>)
+  }
   const itemTypeName = getItemTypeName(object)
   const itemName = object.name?.trim() || itemTypeName
   const updateTextStyle = (text: TextObject, updates: Partial<TextStyle>) => {
@@ -519,7 +527,7 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
                   isOpen={barcodeModalOpen}
                   onClose={() => setBarcodeModalOpen(false)}
                   value={bcObj.barcodeType}
-                  onChange={(value) => handleChange('barcodeType', value)}
+                  onChange={handleBarcodeTypeChange}
                   groups={barcodeSymbologyGroups}
                 />
               </Field>
@@ -552,7 +560,7 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
                 <SymbologySelect
                   value={qrObj.barcodeType || 'QRCode'}
                   groups={qrSymbologyGroups}
-                  onChange={(value) => handleChange('barcodeType', value)}
+                  onChange={handleBarcodeTypeChange}
                 />
               </Field>
 

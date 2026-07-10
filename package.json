@@ -38,6 +38,14 @@
         "zip"
       ]
     },
+    "fileAssociations": [
+      {
+        "ext": "lfx",
+        "name": "LabelForge Template",
+        "description": "LabelForge Studio template",
+        "role": "Editor"
+      }
+    ],
     "win": {
       "target": [
         {

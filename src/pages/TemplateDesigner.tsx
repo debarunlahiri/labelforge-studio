@@ -64,6 +64,10 @@ const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
 const ZOOM_STEP = 0.1
 const ROTATE_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.64-6.36'/%3E%3Cpath d='M21 3v6h-6'/%3E%3C/svg%3E") 12 12, alias`
+const TRANSFORMER_ANCHOR_SIZE = 10
+const TRANSFORMER_ANCHOR_RADIUS = 2
+const TRANSFORMER_STROKE_WIDTH = 1.5
+const TRANSFORMER_ROTATE_OFFSET = 28
 
 type ExportFormat = 'labelforge' | 'pdf' | 'jpeg' | 'png'
 const ROTATION_SNAPS = [0, 45, 90, 135, 180, 225, 270, 315]
@@ -1254,20 +1258,6 @@ export default function TemplateDesigner() {
     transformer.getLayer()?.batchDraw()
   }, [selectedObjectIds, objects])
 
-  useEffect(() => {
-    const transformer = transformerRef.current
-    if (!transformer) return
-    const baseAnchorSize = 10
-    const baseStrokeWidth = 1.5
-    const baseRotateOffset = 28
-    transformer.anchorSize(baseAnchorSize / zoom)
-    transformer.borderStrokeWidth(baseStrokeWidth / zoom)
-    transformer.anchorStrokeWidth(baseStrokeWidth / zoom)
-    transformer.rotateAnchorOffset(baseRotateOffset / zoom)
-    transformer.forceUpdate()
-    transformer.getLayer()?.batchDraw()
-  }, [zoom])
-
   const handleTransformEnd = useCallback(() => {
     const transformer = transformerRef.current
     if (!transformer) return
@@ -1899,14 +1889,14 @@ export default function TemplateDesigner() {
                           'bottom-left',
                           'middle-left',
                         ]}
-                        anchorSize={10 / zoom}
-                        anchorCornerRadius={2 / zoom}
+                        anchorSize={TRANSFORMER_ANCHOR_SIZE}
+                        anchorCornerRadius={TRANSFORMER_ANCHOR_RADIUS}
                         borderStroke="#2563eb"
-                        borderStrokeWidth={1.5 / zoom}
+                        borderStrokeWidth={TRANSFORMER_STROKE_WIDTH}
                         anchorStroke="#2563eb"
                         anchorFill="#ffffff"
-                        anchorStrokeWidth={1.5 / zoom}
-                        rotateAnchorOffset={28 / zoom}
+                        anchorStrokeWidth={TRANSFORMER_STROKE_WIDTH}
+                        rotateAnchorOffset={TRANSFORMER_ROTATE_OFFSET}
                         rotateAnchorCursor={ROTATE_CURSOR}
                         rotationSnaps={ROTATION_SNAPS}
                         rotationSnapTolerance={ROTATION_SNAP_TOLERANCE}

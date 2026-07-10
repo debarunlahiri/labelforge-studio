@@ -1,5 +1,6 @@
 import { query, queryOne, run, runDelete } from '../dbHelpers'
 import { v4 as uuidv4 } from 'uuid'
+import { saveTemplateVersion } from './templateVersions'
 
 export interface Template {
   id: string
@@ -185,6 +186,7 @@ export function exportTemplate(id: string): any {
 
 export function importTemplate(data: any, userId: string): Template | null {
   const newId = uuidv4()
+  const sourceTemplate = data.template || {}
 
   run(
     `INSERT INTO templates (id, name, description, label_width, label_height, unit, dpi, printer_type,
@@ -193,25 +195,42 @@ export function importTemplate(data: any, userId: string): Template | null {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
     [
       newId,
-      data.template.name,
-      data.template.description,
-      data.template.label_width,
-      data.template.label_height,
-      data.template.unit || 'mm',
-      data.template.dpi || 300,
-      data.template.printer_type,
-      data.template.page_orientation || 'portrait',
-      data.template.rows || 1,
-      data.template.columns || 1,
-      data.template.margin_top || 0,
-      data.template.margin_bottom || 0,
-      data.template.margin_left || 0,
-      data.template.margin_right || 0,
-      data.template.gap_horizontal || 0,
-      data.template.gap_vertical || 0,
+      sourceTemplate.name || 'Imported Label',
+      sourceTemplate.description,
+      sourceTemplate.label_width,
+      sourceTemplate.label_height,
+      sourceTemplate.unit || 'mm',
+      sourceTemplate.dpi || 300,
+      sourceTemplate.printer_type,
+      sourceTemplate.page_orientation || 'portrait',
+      sourceTemplate.rows || 1,
+      sourceTemplate.columns || 1,
+      sourceTemplate.margin_top || 0,
+      sourceTemplate.margin_bottom || 0,
+      sourceTemplate.margin_left || 0,
+      sourceTemplate.margin_right || 0,
+      sourceTemplate.gap_horizontal || 0,
+      sourceTemplate.gap_vertical || 0,
       userId,
     ]
   )
+
+  if (data.canvas) {
+    saveTemplateVersion(newId, {
+      template_json: JSON.stringify(data.canvas),
+      change_comment: 'Imported from file',
+      created_by: userId,
+    })
+  } else if (Array.isArray(data.versions) && data.versions.length > 0) {
+    const latestVersion = [...data.versions].sort((a, b) => Number(b.version_number || 0) - Number(a.version_number || 0))[0]
+    if (latestVersion?.template_json) {
+      saveTemplateVersion(newId, {
+        template_json: String(latestVersion.template_json),
+        change_comment: 'Imported from file',
+        created_by: userId,
+      })
+    }
+  }
 
   return getTemplateById(newId)
 }

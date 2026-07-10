@@ -1,13 +1,34 @@
 import { fileURLToPath } from 'url'
 import path from 'path'
 import fs from 'fs'
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { initDatabase, closeDatabase } from './database/db.js'
 import { registerIpcHandlers } from './ipc/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
+let pendingOpenFilePath: string | null = null
+
+function isTemplateFile(filePath: string): boolean {
+  const normalizedPath = filePath.toLowerCase()
+  return normalizedPath.endsWith('.lfx') || normalizedPath.endsWith('.lfx.json')
+}
+
+function getOpenFileFromArgv(argv: string[]): string | null {
+  return argv.find((arg) => isTemplateFile(arg) && fs.existsSync(arg)) || null
+}
+
+function sendOpenFileToRenderer(filePath: string) {
+  if (!isTemplateFile(filePath)) return
+  pendingOpenFilePath = filePath
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('app:openTemplateFile', filePath)
+  }
+}
 
 function getAppIconPath() {
   const candidates = [
@@ -64,6 +85,9 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     rendererReady = true
     mainWindow?.show()
+    if (pendingOpenFilePath) {
+      mainWindow?.webContents.send('app:openTemplateFile', pendingOpenFilePath)
+    }
   })
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -105,27 +129,56 @@ function createWindow() {
   })
 }
 
-app.whenReady()
-  .then(async () => {
-    writeStartupLog(`Starting LabelForge Studio ${app.getVersion()} on ${process.platform} ${process.arch}.`)
-    await initDatabase()
-    registerIpcHandlers()
-    createWindow()
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  pendingOpenFilePath = getOpenFileFromArgv(process.argv)
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow()
-      }
+  app.on('second-instance', (_event, argv) => {
+    const filePath = getOpenFileFromArgv(argv)
+    if (filePath) sendOpenFileToRenderer(filePath)
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    sendOpenFileToRenderer(filePath)
+  })
+
+  ipcMain.handle('app:getPendingOpenTemplateFile', () => pendingOpenFilePath)
+  ipcMain.handle('app:clearPendingOpenTemplateFile', (_event, filePath?: string) => {
+    if (!filePath || pendingOpenFilePath === filePath) {
+      pendingOpenFilePath = null
+    }
+  })
+  app.whenReady()
+    .then(async () => {
+      writeStartupLog(`Starting LabelForge Studio ${app.getVersion()} on ${process.platform} ${process.arch}.`)
+      await initDatabase()
+      registerIpcHandlers()
+      createWindow()
+
+      app.on('activate', async () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          await initDatabase()
+          createWindow()
+        }
+      })
     })
-  })
-  .catch((error) => {
-    writeStartupLog('Application startup failed.', error)
-    dialog.showErrorBox(
-      'LabelForge Studio could not start',
-      `${error instanceof Error ? error.message : String(error)}\n\nA diagnostic log was written to:\n${path.join(app.getPath('userData'), 'startup.log')}`
-    )
-    app.quit()
-  })
+    .catch((error) => {
+      writeStartupLog('Application startup failed.', error)
+      dialog.showErrorBox(
+        'LabelForge Studio could not start',
+        `${error instanceof Error ? error.message : String(error)}\n\nA diagnostic log was written to:\n${path.join(app.getPath('userData'), 'startup.log')}`
+      )
+      app.quit()
+    })
+}
 
 process.on('uncaughtException', (error) => {
   writeStartupLog('Uncaught main-process error.', error)
@@ -137,8 +190,8 @@ process.on('unhandledRejection', (error) => {
 })
 
 app.on('window-all-closed', () => {
-  closeDatabase()
   if (process.platform !== 'darwin') {
+    closeDatabase()
     app.quit()
   }
 })

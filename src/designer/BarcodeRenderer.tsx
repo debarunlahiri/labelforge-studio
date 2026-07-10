@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Group, Rect, Text, Image as KonvaImage } from 'react-konva'
 import type Konva from 'konva'
 import bwipjs from 'bwip-js'
-import { getBwipSymbology, getSymbologyLabel, isQrFamilySymbology, symbologyByValue } from './symbologies'
+import { getBwipSymbology, getSampleValueForSymbology, getSymbologyLabel, isQrFamilySymbology, symbologyByValue } from './symbologies'
 
 interface BarcodeRendererProps {
   id?: string
@@ -115,6 +115,13 @@ export default function BarcodeRenderer({
     }
     if (!value) return { dataUrl: '', error: 'No value' }
     const result = renderBarcodeToDataUrl(bwipType, value, width, barcodeAreaHeight, options)
+    if (result.error) {
+      const sampleValue = getSampleValueForSymbology(barcodeType)
+      if (sampleValue && sampleValue !== value) {
+        const sampleResult = renderBarcodeToDataUrl(bwipType, sampleValue, width, barcodeAreaHeight, options)
+        if (!sampleResult.error) return sampleResult
+      }
+    }
     if (result.error && isQrFamilySymbology(barcodeType) && bwipType !== 'qrcode') {
       return renderBarcodeToDataUrl('qrcode', value, width, barcodeAreaHeight, options)
     }
