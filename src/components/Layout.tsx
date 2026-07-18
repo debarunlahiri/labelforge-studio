@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 
@@ -6,6 +7,14 @@ export default function Layout() {
   const isDesigner = /^\/app\/templates\/(?:new|[^/]+\/edit)/.test(location.pathname)
   const isPrintPreview = /^\/app\/templates\/[^/]+\/preview/.test(location.pathname)
   const fullWorkspace = isDesigner || isPrintPreview
+
+  useEffect(() => {
+    window.electronAPI?.settings.getAll().then((settings: Record<string, string>) => {
+      document.documentElement.classList.toggle('interface-compact', settings.interface_compact === 'true')
+      document.documentElement.classList.toggle('reduce-motion', settings.interface_reduce_motion === 'true')
+      document.documentElement.classList.toggle('high-contrast', settings.interface_high_contrast === 'true')
+    }).catch(() => undefined)
+  }, [])
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">

@@ -317,7 +317,7 @@ export default function TemplateDesigner() {
 
       const fileSave = pending.filePath && pending.template
         ? window.electronAPI?.app.saveFile({
-            title: 'Save LabelForge Template',
+            title: 'Save Label Maker Template',
             filePath: pending.filePath,
             showDialog: false,
             extension: '.lfx',
@@ -345,11 +345,17 @@ export default function TemplateDesigner() {
       setGridVisible(settings?.designer_show_grid !== 'false')
       setSnapToGrid(settings?.designer_snap_to_grid !== 'false')
       setGridSize(Number(settings?.designer_grid_size || 10))
+      const defaultZoom = settings?.designer_default_zoom || '100'
+      if (defaultZoom === 'fit') {
+        requestAnimationFrame(() => zoomToFit())
+      } else {
+        setZoom(clampZoom((Number(defaultZoom) || 100) / 100))
+      }
     } catch {
       setAutoSaveEnabled(true)
       setAutoSaveIntervalMs(30000)
     }
-  }, [setGridSize, setGridVisible, setSnapToGrid])
+  }, [setGridSize, setGridVisible, setSnapToGrid, setZoom, zoomToFit])
 
   useEffect(() => {
     if (id) {
@@ -361,6 +367,7 @@ export default function TemplateDesigner() {
       setAutoSaveStatus('idle')
       loadTemplate(id)
       loadVersions(id)
+      window.electronAPI?.settings.set('last_edited_template_id', id).catch(() => undefined)
       loadAutoSaveSettings()
       window.electronAPI?.settings.getAll()
         .then((settings: Record<string, string>) => {
@@ -383,6 +390,19 @@ export default function TemplateDesigner() {
       lastSavedHashRef.current = ''
       documentFilePathRef.current = null
       setDocumentFilePath(null)
+      window.electronAPI?.settings.getAll()
+        .then((settings: Record<string, string>) => {
+          if (!settings?.default_label_preset) return
+          setWizardData((current) => ({
+            ...current,
+            label_width: Math.max(0.01, Number(settings.default_label_width) || current.label_width),
+            label_height: Math.max(0.01, Number(settings.default_label_height) || current.label_height),
+            unit: settings.default_unit || current.unit,
+            dpi: Number(settings.default_dpi) || current.dpi,
+            printer_type: settings.default_printer_name || current.printer_type,
+          }))
+        })
+        .catch(() => undefined)
     }
   }, [id, clearCurrentTemplate, clearObjects, loadAutoSaveSettings, loadTemplate, loadVersions])
 
@@ -537,13 +557,13 @@ export default function TemplateDesigner() {
           .replace(/\s+/g, ' ')
           || 'Untitled Label'
         const saveResult = await window.electronAPI?.app.saveFile({
-          title: saveAs ? 'Save LabelForge Template As' : 'Save LabelForge Template',
+          title: saveAs ? 'Save Label Maker Template As' : 'Save Label Maker Template',
           defaultPath: `${safeName}.lfx`,
           filePath: saveAs ? undefined : documentFilePathRef.current || undefined,
           showDialog: saveAs || !documentFilePathRef.current,
           extension: '.lfx',
           filters: [
-            { name: 'LabelForge Template', extensions: ['lfx'] },
+            { name: 'Label Maker Template', extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           content: JSON.stringify(exportData, null, 2),
@@ -620,10 +640,10 @@ export default function TemplateDesigner() {
           canvas: canvasData,
         }
         const result = await window.electronAPI?.app.saveFile({
-          title: 'Export LabelForge Studio File',
+          title: 'Export Label Maker File',
           defaultPath: `${getSafeTemplateName()}.lfx`,
           filters: [
-            { name: 'LabelForge Studio', extensions: ['lfx'] },
+            { name: 'Label Maker', extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           extension: '.lfx',
@@ -766,7 +786,7 @@ export default function TemplateDesigner() {
           fitMode: 'contain', cropX: 50, cropY: 50, flipHorizontal: false, flipVertical: false,
         } as any
         break
-      case 'datetime':
+      case 'datetime': {
         const now = new Date()
         obj = {
           id, type: 'datetime', name: `Date/Time ${objects.length + 1}`,
@@ -779,6 +799,7 @@ export default function TemplateDesigner() {
         ;(obj as any).data_source_binding = 'static'
         ;(obj as any).print_condition = ''
         break
+      }
       case 'counter':
         obj = {
           id, type: 'counter', name: `Counter ${objects.length + 1}`,
@@ -962,12 +983,15 @@ export default function TemplateDesigner() {
     }
   }, [confirm, selectedObjectIds, deleteSelectedObjects])
 
-  const handleOpenPrintPreview = useCallback(() => {
+  const handleOpenPrintPreview = useCallback(async () => {
     if (!currentTemplate?.id) {
       alert('Save this template before opening print preview.')
       return
     }
-    navigate(`/app/templates/${currentTemplate.id}/preview`)
+    const settings = await window.electronAPI?.settings.getAll().catch(() => ({})) || {}
+    navigate(settings.show_print_preview === 'false'
+      ? `/app/print?template=${encodeURIComponent(currentTemplate.id)}`
+      : `/app/templates/${currentTemplate.id}/preview`)
   }, [currentTemplate?.id, navigate])
 
   const handleAlign = useCallback((action: string) => {
@@ -992,6 +1016,7 @@ export default function TemplateDesigner() {
     onDelete: handleDeleteSelected,
     onSave: () => { void handleSave(false) },
     onSaveAs: () => { void handleSave(false, true) },
+    onPrint: () => { void handleOpenPrintPreview() },
     onCopy: () => copyObject(),
     onPaste: () => pasteObject(),
     onCut: () => { copyObject(); handleDeleteSelected() },

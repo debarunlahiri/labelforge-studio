@@ -18,6 +18,7 @@ type Placement =
   | 'bottom-center'
   | 'bottom-right'
 type LabelsPerPage = '1' | '2' | '3' | '4' | 'multiple'
+type PageLayout = 'portrait' | 'landscape'
 
 const PAPER_SIZES: Record<PaperSizeId, { width: number; height: number; unit: string; label: string }> = {
   A4: { width: 210, height: 297, unit: 'mm', label: 'A4 (210 x 297 mm)' },
@@ -388,10 +389,11 @@ export default function PrintPreview() {
   const [printerLanguage, setPrinterLanguage] = useState<'pdf' | 'zpl' | 'epl' | 'tspl'>('pdf')
   const [statusMessage, setStatusMessage] = useState('')
 
-  const [paperSizeId, setPaperSizeId] = useState<PaperSizeId>('A4')
+  const [paperSizeId, setPaperSizeId] = useState<PaperSizeId>('Artboard')
   const [customPaperWidth, setCustomPaperWidth] = useState(210)
   const [customPaperHeight, setCustomPaperHeight] = useState(297)
   const [customPaperUnit, setCustomPaperUnit] = useState('mm')
+  const [pageLayout, setPageLayout] = useState<PageLayout>('portrait')
   const [labelsPerPage, setLabelsPerPage] = useState<LabelsPerPage>('1')
   const [placement, setPlacement] = useState<Placement>('center')
   const [applyBorder, setApplyBorder] = useState(false)
@@ -408,11 +410,25 @@ export default function PrintPreview() {
   const [isRenderingPreview, setIsRenderingPreview] = useState(false)
 
   const paperSize = useMemo(() => {
-    if (paperSizeId === 'Custom') {
-      return { width: customPaperWidth, height: customPaperHeight, unit: customPaperUnit }
+    let selectedSize: { width: number; height: number; unit: string }
+    if (paperSizeId === 'Artboard') {
+      selectedSize = {
+        width: currentTemplate?.label_width || 1,
+        height: currentTemplate?.label_height || 1,
+        unit: currentTemplate?.unit || 'mm',
+      }
+    } else if (paperSizeId === 'Custom') {
+      selectedSize = { width: customPaperWidth, height: customPaperHeight, unit: customPaperUnit }
+    } else {
+      selectedSize = PAPER_SIZES[paperSizeId]
     }
-    return PAPER_SIZES[paperSizeId]
-  }, [paperSizeId, customPaperWidth, customPaperHeight, customPaperUnit])
+
+    const shortEdge = Math.min(selectedSize.width, selectedSize.height)
+    const longEdge = Math.max(selectedSize.width, selectedSize.height)
+    return pageLayout === 'landscape'
+      ? { ...selectedSize, width: longEdge, height: shortEdge }
+      : { ...selectedSize, width: shortEdge, height: longEdge }
+  }, [paperSizeId, customPaperWidth, customPaperHeight, customPaperUnit, currentTemplate, pageLayout])
 
   const labelSize = useMemo(
     () => ({
@@ -430,9 +446,17 @@ export default function PrintPreview() {
 
   const loadPrinters = async () => {
     try {
+      const settings = await window.electronAPI?.settings.getAll() || {}
       const data = (await window.electronAPI?.printers.list()) || []
       setPrinters(data)
-      if (data.length > 0) setSelectedPrinter((current) => current || data[0].id)
+      const preferred = data.find((printer: Printer) =>
+        printer.driver_name === settings.default_printer_name || printer.name === settings.default_printer_name
+      )
+      if (data.length > 0) setSelectedPrinter((current) => current || preferred?.id || data[0].id)
+      const method = settings.print_method === 'driver' ? 'pdf' : settings.print_method
+      if (['pdf', 'zpl', 'epl', 'tspl'].includes(method)) {
+        setPrinterLanguage(method as 'pdf' | 'zpl' | 'epl' | 'tspl')
+      }
     } catch (error: any) {
       setStatusMessage(`Could not load printers: ${error.message}`)
     }
@@ -449,6 +473,7 @@ export default function PrintPreview() {
 
   useEffect(() => {
     if (!currentTemplate) return
+    setPageLayout(currentTemplate.label_width > currentTemplate.label_height ? 'landscape' : 'portrait')
     setCanvasSize(
       toScreenPx(currentTemplate.label_width, currentTemplate.unit),
       toScreenPx(currentTemplate.label_height, currentTemplate.unit),
@@ -662,10 +687,15 @@ export default function PrintPreview() {
     }
   }
 
-  const paperSizeOptions = useMemo(
-    () => Object.entries(PAPER_SIZES).map(([value, item]) => ({ value: value as PaperSizeId, label: item.label })),
-    [],
-  )
+  const paperSizeOptions = useMemo(() => [
+    {
+      value: 'Artboard',
+      label: currentTemplate
+        ? `Artboard (${currentTemplate.label_width} x ${currentTemplate.label_height} ${currentTemplate.unit})`
+        : 'Artboard size',
+    },
+    ...Object.entries(PAPER_SIZES).map(([value, item]) => ({ value: value as PaperSizeId, label: item.label })),
+  ], [currentTemplate])
 
   if (!currentTemplate) {
     return (
@@ -740,13 +770,6 @@ export default function PrintPreview() {
             </div>
 
             <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
-              <label className="text-sm font-semibold text-slate-600">Pages</label>
-              <select className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                <option>All</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
               <label className="text-sm font-semibold text-slate-600">Copies</label>
               <input
                 type="number"
@@ -760,9 +783,13 @@ export default function PrintPreview() {
 
             <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
               <label className="text-sm font-semibold text-slate-600">Layout</label>
-              <select className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
-                <option>Portrait</option>
-                <option>Landscape</option>
+              <select
+                value={pageLayout}
+                onChange={(event) => setPageLayout(event.target.value as PageLayout)}
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
               </select>
             </div>
 

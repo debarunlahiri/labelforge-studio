@@ -11,6 +11,8 @@ import {
   faRocket,
 } from '@fortawesome/free-solid-svg-icons'
 import PageHero from '../components/PageHero'
+import SearchableSelect from '../components/SearchableSelect'
+import { PRESET_SIZES } from './template-designer/NewTemplateWizard'
 
 export default function Settings() {
   const [generalSettings, setGeneralSettings] = useState({
@@ -33,7 +35,14 @@ export default function Settings() {
     printMethod: 'driver',
     showPrintPreview: true,
     keepPrintHistory: true,
+    defaultLabelWidth: '100',
+    defaultLabelHeight: '50',
+    defaultLabelPreset: '',
+    defaultPrinterName: '',
   })
+  const [detectedPrinters, setDetectedPrinters] = useState<any[]>([])
+  const [isDetectingPrinters, setIsDetectingPrinters] = useState(false)
+  const [identityVariableIds, setIdentityVariableIds] = useState({ companyName: '', plantCode: '' })
   const [settingsStatus, setSettingsStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [appVersion, setAppVersion] = useState('1.0.0')
 
@@ -50,9 +59,16 @@ export default function Settings() {
       const settings = await window.electronAPI?.settings.getAll() || {}
       const companyVar = vars.find((v: any) => v.variable_key === 'company_name')
       const plantVar = vars.find((v: any) => v.variable_key === 'plant_code')
+      const companyName = companyVar?.variable_value === 'LabelForge Studio'
+        ? 'Label Maker'
+        : companyVar?.variable_value || ''
+      if (companyVar?.variable_value === 'LabelForge Studio') {
+        await window.electronAPI?.globalVariables.update(companyVar.id, { variable_value: companyName })
+      }
+      setIdentityVariableIds({ companyName: companyVar?.id || '', plantCode: plantVar?.id || '' })
       setGeneralSettings({
         ...generalSettings,
-        companyName: companyVar?.variable_value || '',
+        companyName,
         plantCode: plantVar?.variable_value || '',
         defaultDpi: settings.default_dpi || generalSettings.defaultDpi,
         defaultUnit: settings.default_unit || generalSettings.defaultUnit,
@@ -71,8 +87,51 @@ export default function Settings() {
         printMethod: settings.print_method || 'driver',
         showPrintPreview: settings.show_print_preview !== 'false',
         keepPrintHistory: settings.keep_print_history !== 'false',
+        defaultLabelWidth: settings.default_label_width || '100',
+        defaultLabelHeight: settings.default_label_height || '50',
+        defaultLabelPreset: settings.default_label_preset || '',
+        defaultPrinterName: settings.default_printer_name || '',
       })
+      detectPrinters()
     } catch {}
+  }
+
+  const detectPrinters = async () => {
+    setIsDetectingPrinters(true)
+    try {
+      setDetectedPrinters(await window.electronAPI?.printers.discover() || [])
+    } finally {
+      setIsDetectingPrinters(false)
+    }
+  }
+
+  const updateDefaultLabelPreset = (presetLabel: string) => {
+    if (!presetLabel) {
+      updateGeneralSetting({ defaultLabelPreset: '' }, { default_label_preset: '' })
+      return
+    }
+    const preset = PRESET_SIZES.find((item) => item.label === presetLabel)
+    if (!preset) return
+    if (preset.label === 'Custom') {
+      updateGeneralSetting({ defaultLabelPreset: 'Custom' }, { default_label_preset: 'Custom' })
+      return
+    }
+    updateGeneralSetting(
+      {
+        defaultLabelPreset: preset.label,
+        defaultLabelWidth: String(preset.width),
+        defaultLabelHeight: String(preset.height),
+        defaultUnit: preset.unit,
+        defaultDpi: String(preset.dpi),
+      },
+      {
+        default_label_preset: preset.label,
+        default_label_width: String(preset.width),
+        default_label_height: String(preset.height),
+        default_unit: preset.unit,
+        default_dpi: String(preset.dpi),
+      },
+    )
   }
 
   const persistSettings = async (updates: Record<string, string>) => {
@@ -90,6 +149,25 @@ export default function Settings() {
     setGeneralSettings((current) => ({ ...current, ...updates }))
     persistSettings(persisted)
   }
+
+  const persistIdentity = async (field: 'companyName' | 'plantCode') => {
+    const id = identityVariableIds[field]
+    if (!id) return
+    setSettingsStatus('saving')
+    try {
+      const result = await window.electronAPI?.globalVariables.update(id, { variable_value: generalSettings[field].trim() })
+      setSettingsStatus(result?.success === false ? 'error' : 'saved')
+      setTimeout(() => setSettingsStatus('idle'), 1800)
+    } catch {
+      setSettingsStatus('error')
+    }
+  }
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('interface-compact', generalSettings.compactInterface)
+    document.documentElement.classList.toggle('reduce-motion', generalSettings.reduceMotion)
+    document.documentElement.classList.toggle('high-contrast', generalSettings.highContrast)
+  }, [generalSettings.compactInterface, generalSettings.highContrast, generalSettings.reduceMotion])
 
   const inputClass =
     'h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100'
@@ -124,7 +202,7 @@ export default function Settings() {
       <PageHero
         eyebrow="Application preferences"
         title="Settings"
-        description="Choose how LabelForge creates, saves, and prints your labels."
+        description="Choose how Label Maker creates, saves, and prints your labels."
         icon={faDisplay}
         actions={
         <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
@@ -156,6 +234,7 @@ export default function Settings() {
                     type="text"
                     value={generalSettings.companyName}
                     onChange={(e) => setGeneralSettings({ ...generalSettings, companyName: e.target.value })}
+                    onBlur={() => persistIdentity('companyName')}
                     className={inputClass}
                     placeholder="Your company or facility name"
                   />
@@ -166,6 +245,7 @@ export default function Settings() {
                     type="text"
                     value={generalSettings.plantCode}
                     onChange={(e) => setGeneralSettings({ ...generalSettings, plantCode: e.target.value })}
+                    onBlur={() => persistIdentity('plantCode')}
                     className={inputClass}
                     placeholder="Example: PL01"
                   />
@@ -185,6 +265,32 @@ export default function Settings() {
             </div>
           </div>
           <div className="grid gap-5 p-6 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-2 block text-sm font-semibold text-slate-800">Default label size</label>
+                  <SearchableSelect
+                    value={generalSettings.defaultLabelPreset}
+                    onChange={updateDefaultLabelPreset}
+                    placeholder="No default — show all sizes"
+                    searchPlaceholder="Search label sizes..."
+                    options={[
+                      { value: '', label: 'No default — show all sizes' },
+                      ...PRESET_SIZES.map((preset) => ({ value: preset.label, label: preset.label })),
+                    ]}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">All sizes remain available when creating a template; this only preselects your usual size.</p>
+                </div>
+                {generalSettings.defaultLabelPreset === 'Custom' && (
+                  <>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-800">Custom width</label>
+                      <input type="number" min="0.01" step="0.01" value={generalSettings.defaultLabelWidth} onChange={(event) => updateGeneralSetting({ defaultLabelWidth: event.target.value }, { default_label_width: event.target.value })} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-800">Custom height</label>
+                      <input type="number" min="0.01" step="0.01" value={generalSettings.defaultLabelHeight} onChange={(event) => updateGeneralSetting({ defaultLabelHeight: event.target.value }, { default_label_height: event.target.value })} className={inputClass} />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-800">Print resolution</label>
                   <select
@@ -270,6 +376,33 @@ export default function Settings() {
             </div>
           </div>
               <div className="space-y-5 p-6">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-sm font-semibold text-slate-800">Default printer</label>
+                    <button type="button" onClick={detectPrinters} disabled={isDetectingPrinters} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50">
+                      {isDetectingPrinters ? 'Detecting…' : 'Detect again'}
+                    </button>
+                  </div>
+                  <SearchableSelect
+                    value={generalSettings.defaultPrinterName}
+                    onChange={(value) => updateGeneralSetting({ defaultPrinterName: value }, { default_printer_name: value })}
+                    placeholder="No default — show all printers"
+                    searchPlaceholder="Search detected printers..."
+                    options={[
+                      { value: '', label: 'No default — show all printers' },
+                      ...detectedPrinters
+                        .map((printer) => ({
+                          value: printer.driver_name || printer.name,
+                          label: printer.name,
+                          description: `${printer.connection_type || 'driver'} · ${printer.status || 'unknown'}`,
+                        }))
+                        .filter((option, index, all) =>
+                          Boolean(option.value) && all.findIndex((item) => item.value === option.value) === index
+                        ),
+                    ]}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Only printers detected by your operating system are listed. Label Maker uses the real system printer name.</p>
+                </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-800">Preferred print method</label>
                   <select
@@ -404,7 +537,7 @@ export default function Settings() {
               <FontAwesomeIcon icon={faRocket} />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-900">When LabelForge starts</h2>
+              <h2 className="font-semibold text-slate-900">When Label Maker starts</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600">Choose what you want to see first when opening the application.</p>
             </div>
           </div>
@@ -444,7 +577,7 @@ export default function Settings() {
 
       <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-          <span>LabelForge Studio v{appVersion}</span>
+          <span>Label Maker v{appVersion}</span>
           <span aria-hidden="true">•</span>
           <span>Proprietary License</span>
           <span aria-hidden="true">•</span>

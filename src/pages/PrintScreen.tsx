@@ -1,37 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import PrintTimeInput from './PrintTimeInput'
 import SearchableSelect from '../components/SearchableSelect'
 import PageHero from '../components/PageHero'
 import { faPrint } from '@fortawesome/free-solid-svg-icons'
 import { renderToPNG } from '../utils/labelRenderer'
 
-interface PrintJob {
-  id: string
-  template_id: string
-  template_name?: string
-  printer_name?: string
-  copies: number
-  status: string
-  created_at: string
-  error_message: string | null
-}
-
-const statusColors: Record<string, string> = {
-  Pending: 'bg-yellow-100 text-yellow-700 border-yellow-300',
-  Queued: 'bg-blue-100 text-blue-700 border-blue-300',
-  Rendering: 'bg-indigo-100 text-indigo-700 border-indigo-300',
-  Sending: 'bg-cyan-100 text-cyan-700 border-cyan-300',
-  Printing: 'bg-green-100 text-green-700 border-green-300',
-  Completed: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  Failed: 'bg-red-100 text-red-700 border-red-300',
-  Cancelled: 'bg-gray-100 text-gray-600 border-gray-300',
-  Retrying: 'bg-orange-100 text-orange-700 border-orange-300',
-  Paused: 'bg-slate-100 text-slate-700 border-slate-300',
-}
-
 export default function PrintScreen() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [templates, setTemplates] = useState<any[]>([])
   const [printers, setPrinters] = useState<any[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState('')
@@ -40,7 +17,6 @@ export default function PrintScreen() {
   const [isPrinting, setIsPrinting] = useState(false)
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [showPrintInputDialog, setShowPrintInputDialog] = useState(false)
-  const [printTimeValues, setPrintTimeValues] = useState<Record<string, string>>({})
   const [printTimeFields] = useState<Array<{id: string; label: string; type: string; required: boolean; options?: string[]}>>([])
 
   useEffect(() => {
@@ -51,8 +27,28 @@ export default function PrintScreen() {
     try {
       const t = await window.electronAPI?.templates.list() || []
       setTemplates(t)
-      const p = await window.electronAPI?.printers.list() || []
+      const requestedTemplate = searchParams.get('template')
+      if (requestedTemplate && t.some((template: any) => template.id === requestedTemplate)) {
+        setSelectedTemplate(requestedTemplate)
+      }
+      const settings = await window.electronAPI?.settings.getAll() || {}
+      const detected = await window.electronAPI?.printers.discover() || []
+      const detectedPrinters: any[] = []
+      for (const printer of detected) {
+        const result = await window.electronAPI?.printers.registerDiscovered(printer)
+        if (result?.printer) detectedPrinters.push(result.printer)
+      }
+      const p = detectedPrinters.filter((printer, index, all) => {
+        const identity = printer.driver_name || printer.name
+        return Boolean(identity) && all.findIndex((item) => (item.driver_name || item.name) === identity) === index
+      })
       setPrinters(p)
+      if (settings.default_printer_name) {
+        const preferred = p.find((printer: any) =>
+          printer.driver_name === settings.default_printer_name || printer.name === settings.default_printer_name
+        )
+        if (preferred) setSelectedPrinter((current) => current || preferred.id)
+      }
     } catch {}
   }
 
@@ -109,6 +105,15 @@ export default function PrintScreen() {
     }
   }
 
+  const selectedTemplateDetails = templates.find((template: any) => template.id === selectedTemplate)
+  const artboardOrientation = selectedTemplateDetails
+    ? selectedTemplateDetails.label_width === selectedTemplateDetails.label_height
+      ? 'Square'
+      : selectedTemplateDetails.label_width > selectedTemplateDetails.label_height
+        ? 'Landscape'
+        : 'Portrait'
+    : ''
+
   return (
     <>
       <div className="mx-auto max-w-3xl space-y-6">
@@ -155,14 +160,14 @@ export default function PrintScreen() {
           </div>
           {printers.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
-              No printers available. Please register a printer first.
+              No printers were detected by your operating system. Connect or install a printer, then detect again.
             </div>
           ) : (
             <SearchableSelect
               value={selectedPrinter}
               onChange={setSelectedPrinter}
               placeholder="Select a printer..."
-              searchPlaceholder="Search registered printers..."
+              searchPlaceholder="Search detected printers..."
               options={printers.map((printer: any) => ({
                 value: printer.id,
                 label: printer.name,
@@ -175,6 +180,29 @@ export default function PrintScreen() {
         <div className="rounded-xl border border-[var(--border-color)] bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Print Options</h2>
           <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Artboard size</div>
+              {selectedTemplateDetails ? (
+                <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <div className="text-xl font-semibold text-slate-900">
+                      {selectedTemplateDetails.label_width} × {selectedTemplateDetails.label_height} {selectedTemplateDetails.unit}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">Width × height</div>
+                  </div>
+                  <div>
+                    <div className="text-base font-semibold text-slate-800">{selectedTemplateDetails.dpi} DPI</div>
+                    <div className="mt-1 text-xs text-slate-500">Print resolution</div>
+                  </div>
+                  <div>
+                    <div className="text-base font-semibold text-slate-800">{artboardOrientation}</div>
+                    <div className="mt-1 text-xs text-slate-500">Orientation</div>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">Select a template to see its artboard dimensions.</p>
+              )}
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Number of Copies</label>
               <input
@@ -225,7 +253,7 @@ export default function PrintScreen() {
             <h2 className="mb-4 text-lg font-semibold">Print-Time Input</h2>
             <PrintTimeInput
               fields={printTimeFields}
-              onSubmit={(values) => { setPrintTimeValues(values); setShowPrintInputDialog(false); handlePrint() }}
+              onSubmit={() => { setShowPrintInputDialog(false); handlePrint() }}
               onCancel={() => setShowPrintInputDialog(false)}
             />
           </div>

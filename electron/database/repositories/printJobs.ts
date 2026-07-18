@@ -1,4 +1,4 @@
-import { query, queryOne, run } from '../dbHelpers'
+import { query, queryOne, run, runDelete } from '../dbHelpers'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface PrintJob {
@@ -44,6 +44,11 @@ export function listPrintJobs(filters?: {
 
 export function getPrintJobById(id: string): PrintJob | null {
   return queryOne('SELECT * FROM print_jobs WHERE id = ?', [id]) as PrintJob | null
+}
+
+export function deletePrintJob(id: string): boolean {
+  runDelete('DELETE FROM print_job_logs WHERE print_job_id = ?', [id])
+  return runDelete('DELETE FROM print_jobs WHERE id = ?', [id])
 }
 
 export function createPrintJob(data: {

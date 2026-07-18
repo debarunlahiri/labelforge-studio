@@ -7,7 +7,7 @@ export function seedDatabase(db: SqlJsDatabase): void {
   if (count > 0) return
 
   const globalVariables = [
-    { id: uuidv4(), key: 'company_name', value: 'LabelForge Studio', data_type: 'string', description: 'Company name' },
+    { id: uuidv4(), key: 'company_name', value: 'Label Maker', data_type: 'string', description: 'Company name' },
     { id: uuidv4(), key: 'plant_code', value: 'PL01', data_type: 'string', description: 'Plant code' },
     { id: uuidv4(), key: 'factory_address', value: '', data_type: 'string', description: 'Factory address' },
     { id: uuidv4(), key: 'gst_number', value: '', data_type: 'string', description: 'GST number' },

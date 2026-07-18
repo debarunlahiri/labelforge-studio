@@ -102,9 +102,8 @@ function tokenize(formula: string): Token[] {
       }
     } else if (ch === '(') {
       pos++
-      const groupTokens: Token[] = []
       let depth = 1
-      let start = pos
+      const start = pos
       while (pos < formula.length && depth > 0) {
         if (formula[pos] === '(') depth++
         else if (formula[pos] === ')') { depth--; if (depth === 0) break }
@@ -125,7 +124,7 @@ function tokenize(formula: string): Token[] {
   return tokens
 }
 
-function readTokenListUntil(endChar: string, separator: string): Token[] {
+function readTokenListUntil(_endChar: string, _separator: string): Token[] {
   return []
 }
 

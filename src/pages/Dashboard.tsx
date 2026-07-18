@@ -6,6 +6,7 @@ import {
   faPenRuler, faPrint, faTableCells, faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import { useTemplateStore } from '../store/templateStore'
 
 interface DashboardCard {
   title: string
@@ -18,6 +19,7 @@ interface DashboardCard {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const activateTemplate = useTemplateStore((state) => state.activateTemplate)
   const [stats, setStats] = useState({
     totalTemplates: 0, approvedTemplates: 0, draftTemplates: 0,
     availablePrinters: 0, failedPrintJobs: 0, todayPrintCount: 0,
@@ -74,10 +76,7 @@ export default function Dashboard() {
         <div className="absolute right-48 top-20 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="relative flex flex-wrap items-center justify-between gap-6">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Production workspace
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight">Welcome to LabelForge Studio</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to Label Maker</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Design labels, manage printers, and monitor production from one workspace.</p>
           </div>
           <div className="flex gap-3">
@@ -115,7 +114,7 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-3">
               {recentTemplates.map((item: any) => (
-                <button key={item.id} onClick={() => navigate(`/app/templates/${item.id}/edit`)} className="group flex w-full items-center justify-between rounded-xl border border-slate-200 p-3.5 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
+                <button key={item.id} onClick={() => { activateTemplate(item); navigate(`/app/templates/${item.id}/edit`) }} className="group flex w-full items-center justify-between rounded-xl border border-slate-200 p-3.5 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-blue-600"><FontAwesomeIcon icon={faLayerGroup} /></div>
                     <div className="min-w-0"><span className="block truncate font-semibold text-slate-900">{item.name}</span><span className="mt-0.5 block text-xs text-slate-500">{item.label_width}{item.unit} × {item.label_height}{item.unit} · {item.dpi} DPI</span></div>

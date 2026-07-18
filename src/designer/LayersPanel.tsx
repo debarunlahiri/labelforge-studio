@@ -57,7 +57,7 @@ const getDisplayObjects = (objects: LabelObject[]) => [...objects].reverse()
 
 export default function LayersPanel({
   objects,
-  selectedObjectId,
+  selectedObjectId: _selectedObjectId,
   onSelect,
   onToggleSelect,
   onMoveUp,

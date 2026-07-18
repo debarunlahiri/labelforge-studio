@@ -33,7 +33,7 @@ function stopDesignerInputPropagation(event: React.SyntheticEvent) {
   event.stopPropagation()
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function getEmptyConfig(type: DataSourceType): Record<string, any> {
   switch (type) {
     case 'static':
@@ -63,9 +63,9 @@ function getEmptyConfig(type: DataSourceType): Record<string, any> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function DataSourceConfigFields({ type, config, onChange }: { type: DataSourceType; config: Record<string, any>; onChange: (config: Record<string, any>) => void }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const handleFieldChange = (key: string, value: any) => {
     onChange({ ...config, [key]: value })
   }
@@ -502,7 +502,7 @@ export default function DataSourcePanel({ dataSources, onChange, onMapField }: D
     if (editingId === id) setEditingId(null)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const handleConfigChange = (id: string, config: Record<string, any>) => {
     onChange(dataSources.map((ds) => (ds.id === id ? { ...ds, config } : ds)))
   }

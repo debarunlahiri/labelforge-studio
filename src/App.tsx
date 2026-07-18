@@ -1,7 +1,6 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Layout from './components/Layout'
-import Welcome from './pages/Welcome'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const TemplateLibrary = lazy(() => import('./pages/TemplateLibrary'))
@@ -14,6 +13,28 @@ const AuditLogs = lazy(() => import('./pages/AuditLogs'))
 const GlobalVariables = lazy(() => import('./pages/GlobalVariables'))
 const PrintPreview = lazy(() => import('./pages/PrintPreview'))
 const TemplateVersions = lazy(() => import('./pages/TemplateVersions'))
+const Help = lazy(() => import('./pages/Help'))
+
+function StartupRoute() {
+  const [destination, setDestination] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.electronAPI?.settings.getAll()
+      .then((settings: Record<string, string>) => {
+        if (settings.reopen_last_template === 'true' && settings.last_edited_template_id) {
+          setDestination(`/app/templates/${settings.last_edited_template_id}/edit`)
+          return
+        }
+        const page = ['dashboard', 'templates', 'print', 'printers'].includes(settings.start_page)
+          ? settings.start_page
+          : 'dashboard'
+        setDestination(`/app/${page}`)
+      })
+      .catch(() => setDestination('/app/dashboard'))
+  }, [])
+
+  return destination ? <Navigate to={destination} replace /> : <div className="flex h-full items-center justify-center text-slate-500">Opening Label Maker…</div>
+}
 
 function OpenTemplateFileBridge() {
   const navigate = useNavigate()
@@ -37,7 +58,7 @@ function OpenTemplateFileBridge() {
           throw new Error(imported?.error || 'Template could not be imported')
         }
       } catch (error) {
-        console.error('Failed to open LabelForge template file:', error)
+        console.error('Failed to open Label Maker template file:', error)
       } finally {
         await window.electronAPI?.app.clearPendingOpenTemplateFile(filePath)
       }
@@ -56,7 +77,7 @@ function App() {
       <OpenTemplateFileBridge />
       <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-[var(--text-secondary)]">Loading...</div></div>}>
         <Routes>
-          <Route path="/" element={<Welcome />} />
+          <Route path="/" element={<StartupRoute />} />
           <Route
             path="/app"
             element={<Layout />}
@@ -71,6 +92,7 @@ function App() {
             <Route path="print-history" element={<PrintHistory />} />
             <Route path="printers" element={<PrinterStatus />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="help" element={<Help />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="global-variables" element={<GlobalVariables />} />
             <Route path="templates/:id/preview" element={<PrintPreview />} />

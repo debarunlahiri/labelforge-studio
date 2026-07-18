@@ -1,8 +1,9 @@
 import { ipcMain, app, dialog, BrowserWindow } from 'electron'
+import { readFileSync } from 'fs'
 import { listTemplates, getTemplateById, createTemplate, updateTemplate, deleteTemplate as deleteTemplateRepo, duplicateTemplate, archiveTemplate, exportTemplate, importTemplate } from '../database/repositories/templates'
 import { listTemplateVersions, getTemplateVersionById, saveTemplateVersion, submitForApproval, approveVersion, rejectVersion } from '../database/repositories/templateVersions'
 import { listPrinters, getPrinterById, registerPrinter, updatePrinter, deletePrinter as deletePrinterRepo, updatePrinterJobStatus, updatePrinterStatus } from '../database/repositories/printers'
-import { listPrintJobs, getPrintJobById, createPrintJob, cancelPrintJob, retryPrintJob, addPrintJobLog } from '../database/repositories/printJobs'
+import { listPrintJobs, getPrintJobById, createPrintJob, cancelPrintJob, retryPrintJob, addPrintJobLog, deletePrintJob } from '../database/repositories/printJobs'
 import { listAuditLogs } from '../database/repositories/auditLogs'
 import { createAuditLog } from '../database/repositories/auditLogs'
 import { listGlobalVariables, createGlobalVariable, updateGlobalVariable, deleteGlobalVariable } from '../database/repositories/globalVariables'
@@ -190,12 +191,16 @@ export function registerIpcHandlers(): void {
         updatePrinterStatus(printer.id, 'available')
         addPrintJobLog(job.id, 'Print job sent successfully', 'Completed')
         createAuditLog({ action: 'print_job_completed', module: 'print', entity_id: job.id, status: 'success' })
-        return { success: true, job: getPrintJobById(job.id) }
+        const completedJob = getPrintJobById(job.id)
+        if (getSystemSettings().keep_print_history === 'false') deletePrintJob(job.id)
+        return { success: true, job: completedJob }
       } catch (printError: any) {
         updatePrinterJobStatus(job.id, 'Failed', printError.message)
         addPrintJobLog(job.id, printError.message, 'Failed')
         createAuditLog({ action: 'print_job_failed', module: 'print', entity_id: job.id, status: 'failed', error_message: printError.message })
-        return { success: false, job: getPrintJobById(job.id), error: printError.message }
+        const failedJob = getPrintJobById(job.id)
+        if (getSystemSettings().keep_print_history === 'false') deletePrintJob(job.id)
+        return { success: false, job: failedJob, error: printError.message }
       }
     } catch (error: any) {
       return { success: false, error: error.message }
@@ -290,7 +295,7 @@ export function registerIpcHandlers(): void {
       return { success: false, error: error.message }
     }
   })
-  ipcMain.handle('dataSources:testConnection', async (_event, config: any) => {
+  ipcMain.handle('dataSources:testConnection', async (_event, _config: any) => {
     return { success: true, message: 'Connection test not yet implemented' }
   })
   ipcMain.handle('dataSources:fetchRecords', async (_event, dataSourceId: string, limit?: number, offset?: number) => {
@@ -315,8 +320,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('dataSources:importCsv', async (_event, filePath: string) => {
     try {
-      const fs = require('fs')
-      const content = fs.readFileSync(filePath, 'utf-8')
+      const content = readFileSync(filePath, 'utf-8')
       const records = parseCsv(content)
       return { success: true, records, count: records.length }
     } catch (error: any) {
@@ -342,7 +346,7 @@ export function registerIpcHandlers(): void {
     try {
       const fs = await import('fs')
       return fs.readFileSync(filePath, 'utf-8')
-    } catch (error: any) {
+    } catch (_error: any) {
       return null
     }
   })

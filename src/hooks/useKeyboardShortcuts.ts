@@ -6,6 +6,7 @@ interface KeyboardShortcutHandlers {
   onDelete: () => void
   onSave: () => void
   onSaveAs?: () => void
+  onPrint?: () => void
   onCopy: () => void
   onPaste: () => void
   onCut?: () => void
@@ -36,7 +37,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         e.target instanceof HTMLSelectElement ||
         (e.target instanceof HTMLElement && e.target.isContentEditable)
 
-      if (isInputFocused && !(mod && key === 's')) return
+      if (isInputFocused && !(mod && (key === 's' || key === 'p'))) return
 
       if (mod && key === 'z' && !e.shiftKey) {
         e.preventDefault()
@@ -60,6 +61,13 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         e.preventDefault()
         if (e.shiftKey) handlers.onSaveAs?.()
         else handlers.onSave()
+        return
+      }
+
+      if (mod && key === 'p') {
+        e.preventDefault()
+        e.stopPropagation()
+        handlers.onPrint?.()
         return
       }
 

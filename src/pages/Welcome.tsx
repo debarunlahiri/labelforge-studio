@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import appLogoUrl from '../assets/app_logo.png'
+import { useTemplateStore } from '../store/templateStore'
 
 const navigation = [
   { label: 'Dashboard', path: '/app/dashboard', icon: dashboardIcon },
@@ -42,6 +43,7 @@ const quickActions = [
 
 export default function Welcome() {
   const navigate = useNavigate()
+  const activateTemplate = useTemplateStore((state) => state.activateTemplate)
   const [isOpening, setIsOpening] = useState(false)
   const [recentTemplates, setRecentTemplates] = useState<any[]>([])
 
@@ -65,10 +67,10 @@ export default function Welcome() {
     setIsOpening(true)
     try {
       const result = await window.electronAPI?.app.selectFile({
-        title: 'Open LabelForge Template',
+        title: 'Open Label Maker Template',
         filters: [
-          { name: 'LabelForge Template', extensions: ['lfx'] },
-          { name: 'Legacy LabelForge JSON', extensions: ['lfx.json'] },
+          { name: 'Label Maker Template', extensions: ['lfx'] },
+          { name: 'Legacy Label Maker JSON', extensions: ['lfx.json'] },
           { name: 'JSON', extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] },
         ],
@@ -89,7 +91,10 @@ export default function Welcome() {
     setIsOpening(false)
   }
 
-  const handleTemplate = (id: string) => navigate(`/app/templates/${id}/edit`)
+  const handleTemplate = (template: any) => {
+    activateTemplate(template)
+    navigate(`/app/templates/${template.id}/edit`)
+  }
 
   const handleAction = (action: string) => {
     if (action === 'new') handleNew()
@@ -103,8 +108,8 @@ export default function Welcome() {
       {/* Top navigation */}
       <header className="flex items-center justify-between border-b border-slate-700/50 bg-slate-900/50 px-6 py-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <img src={appLogoUrl} alt="LabelForge Studio" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
-          <span className="text-lg font-bold text-white">LabelForge Studio</span>
+          <img src={appLogoUrl} alt="Label Maker" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
+          <span className="text-lg font-bold text-white">Label Maker</span>
         </div>
         <nav className="hidden items-center gap-1 md:flex">
           {navigation.map((item) => (
@@ -181,7 +186,7 @@ export default function Welcome() {
                 {recentTemplates.map((t: any) => (
                   <button
                     key={t.id}
-                    onClick={() => handleTemplate(t.id)}
+                    onClick={() => handleTemplate(t)}
                     className="group flex flex-col rounded-xl border border-slate-700 bg-slate-800/50 p-5 text-left transition-all hover:border-blue-500/50 hover:bg-slate-800"
                   >
                     <div className="mb-4 flex items-start justify-between">
@@ -223,7 +228,7 @@ export default function Welcome() {
 
           {/* Footer */}
           <div className="mt-10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
-            <div>LabelForge Studio</div>
+            <div>Label Maker</div>
             <div className="flex gap-4">
               <button onClick={() => navigate('/app/settings')} className="hover:text-slate-300">Settings</button>
               <button onClick={() => navigate('/app/printers')} className="hover:text-slate-300">Printers</button>

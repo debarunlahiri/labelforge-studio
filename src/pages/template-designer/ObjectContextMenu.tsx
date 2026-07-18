@@ -74,10 +74,18 @@ export default function ObjectContextMenu({
   isImage,
   onImageAction,
 }: ObjectContextMenuProps) {
+  const viewportPadding = 8
+  const minimumVisibleHeight = 240
+  const top = Math.max(
+    viewportPadding,
+    Math.min(menu.y, window.innerHeight - minimumVisibleHeight - viewportPadding),
+  )
+  const maxHeight = Math.max(minimumVisibleHeight, window.innerHeight - top - viewportPadding)
+
   return (
     <div
-      className="fixed z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-xs shadow-2xl shadow-slate-900/20 ring-1 ring-black/5"
-      style={{ left: menu.x, top: menu.y }}
+      className="fixed z-50 w-56 overscroll-contain overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white py-1.5 text-xs shadow-2xl shadow-slate-900/20 ring-1 ring-black/5"
+      style={{ left: menu.x, top, maxHeight }}
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}

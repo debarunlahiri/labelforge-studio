@@ -51,7 +51,7 @@ function CardActionTooltip({ label, align = 'center' }: { label: string; align?:
 export default function TemplateLibrary() {
   const { confirm, dialog: confirmDialog } = useConfirm()
   const navigate = useNavigate()
-  const { templates, filters, setFilters, loadTemplates, deleteTemplate, archiveTemplate, duplicateTemplate, clearCurrentTemplate } = useTemplateStore()
+  const { templates, filters, setFilters, loadTemplates, deleteTemplate, archiveTemplate, duplicateTemplate, clearCurrentTemplate, activateTemplate } = useTemplateStore()
   const [search, setSearch] = useState(filters.search || '')
   const [statusFilter, setStatusFilter] = useState(filters.status || '')
 
@@ -100,10 +100,10 @@ export default function TemplateLibrary() {
       if (data) {
         const json = JSON.stringify(data, null, 2)
         await window.electronAPI?.app.saveFile({
-          title: 'Save LabelForge Studio File',
+          title: 'Save Label Maker File',
           defaultPath: `${data.template?.name || 'template'}.lfx`,
           filters: [
-            { name: 'LabelForge Studio', extensions: ['lfx'] },
+            { name: 'Label Maker', extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           extension: '.lfx',
@@ -118,7 +118,7 @@ export default function TemplateLibrary() {
     try {
       const filePath = await window.electronAPI?.app.selectFile({
         title: 'Import Template',
-        filters: [{ name: 'LabelForge Template', extensions: ['json', 'lfx'] }],
+        filters: [{ name: 'Label Maker Template', extensions: ['json', 'lfx'] }],
       })
       if (!filePath) return
       const response = await fetch(`file://${filePath}`)
@@ -198,7 +198,7 @@ export default function TemplateLibrary() {
             <div
               key={template.id}
               className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg"
-              onClick={() => navigate(`/app/templates/${template.id}/edit`)}
+              onClick={() => { activateTemplate(template); navigate(`/app/templates/${template.id}/edit`) }}
             >
               <TemplateThumbnail template={template} />
               <div className="p-5">
@@ -232,7 +232,7 @@ export default function TemplateLibrary() {
                 <span>Updated {new Date(template.updated_at || template.created_at).toLocaleDateString()}</span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); navigate(`/app/templates/${template.id}/edit`) }}
+                    onClick={(e) => { e.stopPropagation(); activateTemplate(template); navigate(`/app/templates/${template.id}/edit`) }}
                     className="group/action relative flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-blue-50 hover:text-blue-700"
                     aria-label="Edit design"
                   >

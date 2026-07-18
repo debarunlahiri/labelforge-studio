@@ -81,3 +81,46 @@ input:focus, select:focus, textarea:focus, button:focus {
   background: #ffffff;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
 }
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+html.high-contrast {
+  --border-color: #94a3b8;
+  --text-secondary: #334155;
+  --content-bg: #ffffff;
+}
+
+html.high-contrast input,
+html.high-contrast select,
+html.high-contrast textarea,
+html.high-contrast button {
+  border-color: #64748b;
+}
+
+html.interface-compact body {
+  font-size: 14px;
+}
+
+html.interface-compact main:not(:has(.designer-side-panel)) {
+  padding: 1rem !important;
+}
+
+html.interface-compact main:not(:has(.designer-side-panel)) .p-6 {
+  padding: 1rem;
+}
+
+html.interface-compact main:not(:has(.designer-side-panel)) .py-6 {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+html.interface-compact main:not(:has(.designer-side-panel)) .space-y-6 > :not(:last-child) {
+  margin-bottom: 1rem;
+}

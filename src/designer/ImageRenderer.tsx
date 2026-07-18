@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Group, Image as KonvaImage, Rect, Text } from 'react-konva'
-import type Konva from 'konva'
 
 type ImageRendererProps = {
   id?: string

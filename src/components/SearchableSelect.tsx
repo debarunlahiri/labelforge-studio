@@ -123,9 +123,9 @@ export default function SearchableSelect({
             {filteredOptions.length === 0 ? (
               <div className="px-3 py-5 text-center text-xs text-slate-500">No matches found</div>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, index) => (
                 <button
-                  key={option.value}
+                  key={`${option.value}-${index}`}
                   type="button"
                   onClick={() => {
                     onChange(option.value)

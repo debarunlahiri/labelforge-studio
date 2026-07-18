@@ -1,4 +1,3 @@
-import type { LabelObject } from '../types'
 
 interface AlignToolsProps {
   onAlign: (action: string) => void

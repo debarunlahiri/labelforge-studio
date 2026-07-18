@@ -11,7 +11,13 @@ type ConfirmOptions = {
 
 export function useConfirm() {
   const [request, setRequest] = useState<(ConfirmOptions & { resolve: (value: boolean) => void }) | null>(null)
-  const confirm = useCallback((options: ConfirmOptions) => new Promise<boolean>((resolve) => setRequest({ ...options, resolve })), [])
+  const confirm = useCallback(async (options: ConfirmOptions) => {
+    try {
+      const settings = await window.electronAPI?.settings.getAll()
+      if (settings?.confirm_before_delete === 'false' && options.danger !== false) return true
+    } catch {}
+    return new Promise<boolean>((resolve) => setRequest({ ...options, resolve }))
+  }, [])
   const dialog = (
     <ConfirmDialog
       open={Boolean(request)}

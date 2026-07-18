@@ -58,7 +58,7 @@ interface ToolbarProps {
 }
 
 const exportFormats = [
-  { value: 'labelforge', label: 'LabelForge Studio' },
+  { value: 'labelforge', label: 'Label Maker' },
   { value: 'pdf', label: 'PDF' },
   { value: 'jpeg', label: 'JPEG' },
   { value: 'png', label: 'PNG' },
@@ -187,7 +187,7 @@ export default function Toolbar({
         >
           <FontAwesomeIcon icon={faPrint} />
           Print
-          <ToolbarTooltip label="Print Design" description="Open print preview and printer selection." />
+          <ToolbarTooltip label="Print Design" description={`Open print preview and printer selection. Shortcut: ${shortcutModifier}+P.`} />
         </button>
         <div className="mx-1 h-7 w-px bg-[var(--border-color)]" />
         <button

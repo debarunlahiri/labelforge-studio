@@ -30,7 +30,7 @@ export default function AuditLogs() {
       <PageHero
         eyebrow="System activity"
         title="Audit Logs"
-        description="Inspect recorded actions and operational changes across LabelForge."
+        description="Inspect recorded actions and operational changes across Label Maker."
         icon={faShieldHalved}
         actions={
         <button

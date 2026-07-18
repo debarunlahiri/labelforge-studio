@@ -66,7 +66,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 700,
-    title: 'LabelForge Studio',
+    title: 'Label Maker',
     icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -94,13 +94,13 @@ function createWindow() {
     const message = `Renderer failed to load (${errorCode}): ${errorDescription}\n${validatedURL}`
     writeStartupLog(message)
     mainWindow?.show()
-    dialog.showErrorBox('LabelForge Studio could not open', message)
+    dialog.showErrorBox('Label Maker could not open', message)
   })
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     const message = `Renderer process exited: ${details.reason} (exit code ${details.exitCode})`
     writeStartupLog(message)
-    dialog.showErrorBox('LabelForge Studio stopped unexpectedly', message)
+    dialog.showErrorBox('Label Maker stopped unexpectedly', message)
   })
 
   // Never leave users with an invisible process if ready-to-show is not emitted.
@@ -118,7 +118,7 @@ function createWindow() {
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html')).catch((error) => {
       writeStartupLog('Failed to load the application UI.', error)
       dialog.showErrorBox(
-        'LabelForge Studio could not start',
+        'Label Maker could not start',
         `The application UI could not be loaded.\n\n${error instanceof Error ? error.message : String(error)}`
       )
     })
@@ -158,7 +158,7 @@ if (!gotSingleInstanceLock) {
   })
   app.whenReady()
     .then(async () => {
-      writeStartupLog(`Starting LabelForge Studio ${app.getVersion()} on ${process.platform} ${process.arch}.`)
+      writeStartupLog(`Starting Label Maker ${app.getVersion()} on ${process.platform} ${process.arch}.`)
       await initDatabase()
       registerIpcHandlers()
       createWindow()
@@ -173,7 +173,7 @@ if (!gotSingleInstanceLock) {
     .catch((error) => {
       writeStartupLog('Application startup failed.', error)
       dialog.showErrorBox(
-        'LabelForge Studio could not start',
+        'Label Maker could not start',
         `${error instanceof Error ? error.message : String(error)}\n\nA diagnostic log was written to:\n${path.join(app.getPath('userData'), 'startup.log')}`
       )
       app.quit()
@@ -182,7 +182,7 @@ if (!gotSingleInstanceLock) {
 
 process.on('uncaughtException', (error) => {
   writeStartupLog('Uncaught main-process error.', error)
-  dialog.showErrorBox('LabelForge Studio error', error.message)
+  dialog.showErrorBox('Label Maker error', error.message)
 })
 
 process.on('unhandledRejection', (error) => {

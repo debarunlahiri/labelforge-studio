@@ -200,7 +200,7 @@ public static class RawPrinter {
 
     IntPtr unmanagedBytes = IntPtr.Zero;
     try {
-      var docInfo = new DOCINFOA { pDocName = "LabelForge Studio Raw Label", pDataType = "RAW" };
+      var docInfo = new DOCINFOA { pDocName = "Label Maker Raw Label", pDataType = "RAW" };
       if (!StartDocPrinter(printerHandle, 1, docInfo)) {
         throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not start print job.");
       }

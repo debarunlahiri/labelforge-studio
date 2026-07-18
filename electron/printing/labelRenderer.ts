@@ -136,8 +136,6 @@ export function generateZPL(templateJson: string): string {
         break
       }
       case 'image': {
-        const imgWidth = convertToDots(obj.width, unit, dpi)
-        const imgHeight = convertToDots(obj.height, unit, dpi)
         zpl += `^FO${x},${y}\n`
         zpl += `^XG:${obj.source || 'IMAGE'},1,1^FS\n`
         break
@@ -185,10 +183,10 @@ function toZPLColor(color: string): string {
   return 'B'
 }
 
-export function generateEPL(templateJson: string): string {
+export function generateEPL(_templateJson: string): string {
   return ''
 }
 
-export function generateTSPL(templateJson: string): string {
+export function generateTSPL(_templateJson: string): string {
   return ''
 }

@@ -1,6 +1,5 @@
 import React from 'react'
 import { Group, Line, Text } from 'react-konva'
-import type { LabelObject } from '../types'
 
 interface RulerProps {
   size: number

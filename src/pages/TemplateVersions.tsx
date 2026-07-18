@@ -35,12 +35,12 @@ const objStatusLabels: Record<ObjStatus, string> = {
   unchanged: 'Unchanged',
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function parseTemplateJson(jsonStr: string): any {
   try { return JSON.parse(jsonStr) } catch { return { objects: [], width: 0, height: 0, unit: 'mm', dpi: 203 } }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function getObjectStatus(id: string, map1: Map<string, any>, map2: Map<string, any>): ObjStatus {
   const in1 = map1.has(id)
   const in2 = map2.has(id)
@@ -50,7 +50,7 @@ function getObjectStatus(id: string, map1: Map<string, any>, map2: Map<string, a
   return 'unchanged'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function getObjectBreakdown(objects: any[]): string {
   if (!objects || objects.length === 0) return '0 items'
   const counts: Record<string, number> = {}
@@ -58,7 +58,7 @@ function getObjectBreakdown(objects: any[]): string {
   return `${objects.length} item${objects.length !== 1 ? 's' : ''}: ${Object.entries(counts).map(([t, c]) => `${c} ${t}`).join(', ')}`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function getKeyProps(obj: any): string {
   switch (obj.type) {
     case 'text': return `value="${obj.value ?? ''}" ${obj.fontFamily ?? ''} ${obj.fontSize ?? ''}pt${obj.bold ? ' bold' : ''}${obj.italic ? ' italic' : ''}`
@@ -75,7 +75,7 @@ function getKeyProps(obj: any): string {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function getChangedPropKeys(o1: any, o2: any): string[] {
   const changed: string[] = []
   const allKeys = new Set([...Object.keys(o1), ...Object.keys(o2)])
@@ -196,9 +196,9 @@ export default function TemplateVersions() {
       {showDiff && diffVersions.v1 && diffVersions.v2 && (() => {
         const t1 = parseTemplateJson(diffVersions.v1!.template_json)
         const t2 = parseTemplateJson(diffVersions.v2!.template_json)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const map1 = new Map<string, any>((t1.objects || []).map((o: any) => [o.id, o]))
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const map2 = new Map<string, any>((t2.objects || []).map((o: any) => [o.id, o]))
         const allIds = [...new Set([...map1.keys(), ...map2.keys()])]
         const sortedIds = [...allIds].sort((a, b) => {

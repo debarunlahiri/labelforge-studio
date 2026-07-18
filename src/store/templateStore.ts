@@ -7,12 +7,14 @@ interface TemplateState {
   currentVersion: TemplateVersion | null
   versions: TemplateVersion[]
   isLoading: boolean
+  loadingTemplateId: string | null
   error: string | null
   filters: {
     status?: string
     search?: string
   }
   setFilters: (filters: Partial<{ status: string; search: string }>) => void
+  activateTemplate: (template: Template) => void
   clearCurrentTemplate: () => void
   loadTemplates: () => Promise<void>
   loadTemplate: (id: string) => Promise<void>
@@ -38,11 +40,13 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
   currentVersion: null,
   versions: [],
   isLoading: false,
+  loadingTemplateId: null,
   error: null,
   filters: {},
 
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
-  clearCurrentTemplate: () => set({ currentTemplate: null, currentVersion: null, versions: [] }),
+  activateTemplate: (template) => set({ currentTemplate: template, currentVersion: null, versions: [], loadingTemplateId: null, error: null }),
+  clearCurrentTemplate: () => set({ currentTemplate: null, currentVersion: null, versions: [], loadingTemplateId: null }),
 
   loadTemplates: async () => {
     set({ isLoading: true, error: null })
@@ -56,12 +60,20 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
   },
 
   loadTemplate: async (id) => {
-    set({ isLoading: true, error: null })
+    set((state) => ({
+      isLoading: true,
+      error: null,
+      currentTemplate: state.currentTemplate?.id === id ? state.currentTemplate : null,
+      currentVersion: null,
+      loadingTemplateId: id,
+    }))
     try {
       const template = await getApi().templates.getById(id)
-      set({ currentTemplate: template, isLoading: false })
+      if (get().loadingTemplateId !== id) return
+      set({ currentTemplate: template, isLoading: false, loadingTemplateId: null })
     } catch (error: any) {
-      set({ error: error.message, isLoading: false })
+      if (get().loadingTemplateId !== id) return
+      set({ error: error.message, isLoading: false, loadingTemplateId: null })
     }
   },
 
@@ -69,7 +81,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     try {
       const result = await getApi().templates.create(data)
       if (result.success) {
-        set({ currentTemplate: result.template, currentVersion: null, versions: [] })
+        set({ currentTemplate: result.template, currentVersion: null, versions: [], loadingTemplateId: null })
         await get().loadTemplates()
         return result.template
       }

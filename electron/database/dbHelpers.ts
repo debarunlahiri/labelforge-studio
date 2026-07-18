@@ -1,4 +1,3 @@
-import type { Database as SqlJsDatabase } from 'sql.js'
 import { getDatabase, scheduleSave } from './db'
 
 export type SqlJsRow = Record<string, any>

@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import SearchableSelect from '../../components/SearchableSelect'
 import type { NewTemplateData } from './types'
 
@@ -12,7 +12,7 @@ type NewTemplateWizardProps = {
 const inputClass =
   'w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100'
 
-const PRESET_SIZES = [
+export const PRESET_SIZES = [
   { label: 'Custom', width: 0, height: 0, unit: '', dpi: 0 },
   { label: 'A4 Label Sheet', width: 210, height: 297, unit: 'mm', dpi: 300 },
   { label: 'Letter Label Sheet', width: 215.9, height: 279.4, unit: 'mm', dpi: 300 },
@@ -140,6 +140,22 @@ export default function NewTemplateWizard({
   onCancel,
   onCreate,
 }: NewTemplateWizardProps) {
+  const [detectedPrinters, setDetectedPrinters] = useState<any[]>([])
+  const [isDetectingPrinters, setIsDetectingPrinters] = useState(false)
+
+  const detectPrinters = async () => {
+    setIsDetectingPrinters(true)
+    try {
+      setDetectedPrinters(await window.electronAPI?.printers.discover() || [])
+    } finally {
+      setIsDetectingPrinters(false)
+    }
+  }
+
+  useEffect(() => {
+    detectPrinters()
+  }, [])
+
   const update = <Key extends keyof NewTemplateData>(key: Key, value: NewTemplateData[Key]) => {
     setData((current) => ({ ...current, [key]: value }))
   }
@@ -245,14 +261,26 @@ export default function NewTemplateWizard({
                   <option value={600}>600 DPI</option>
                 </select>
               </Field>
-              <Field label="Printer Type">
-                <input
-                  type="text"
+              <Field label="Detected printer">
+                <SearchableSelect
                   value={data.printer_type}
-                  onChange={(event) => update('printer_type', event.target.value)}
-                  className={inputClass}
-                  placeholder="e.g., Zebra"
+                  onChange={(value) => update('printer_type', value)}
+                  placeholder={isDetectingPrinters ? 'Detecting printers…' : 'Select a detected printer'}
+                  searchPlaceholder="Search detected printers..."
+                  disabled={isDetectingPrinters}
+                  options={detectedPrinters
+                    .map((printer) => ({
+                      value: printer.driver_name || printer.name,
+                      label: printer.name,
+                      description: `${printer.connection_type || 'driver'} · ${printer.status || 'unknown'}`,
+                    }))
+                    .filter((option, index, all) =>
+                      Boolean(option.value) && all.findIndex((item) => item.value === option.value) === index
+                    )}
                 />
+                <button type="button" onClick={detectPrinters} disabled={isDetectingPrinters} className="mt-2 text-xs font-medium text-blue-700 hover:text-blue-800 disabled:opacity-50">
+                  {isDetectingPrinters ? 'Detecting…' : 'Detect again'}
+                </button>
               </Field>
             </div>
 

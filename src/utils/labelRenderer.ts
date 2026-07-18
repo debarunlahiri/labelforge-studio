@@ -398,7 +398,7 @@ export async function renderToPDF(
   height: number,
   dpi: number,
   unit: string,
-  templateName: string
+  _templateName: string
 ): Promise<Blob> {
   const canvas = await renderToCanvas(objects, width, height, dpi, unit)
   const imgDataUrl = canvas.toDataURL('image/jpeg', 0.95)
@@ -452,7 +452,7 @@ function buildSimplePDF(
   append(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${pixelWidth} /Height ${pixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgUint8.length} >>\nstream\n`)
   append(imgUint8)
   append('\nendstream\nendobj\n')
-  appendObject('6 0 obj\n<< /Producer (LabelForge Studio) >>\nendobj\n')
+  appendObject('6 0 obj\n<< /Producer (Label Maker) >>\nendobj\n')
 
   const xrefOffset = byteLength
   append(`xref\n0 7\n0000000000 65535 f \n${offsets.map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('')}`)
@@ -565,8 +565,6 @@ export function renderToZPL(
       }
       case 'image': {
         const img = obj as ImageObject
-        const imgWidth = convertToDots(obj.width, unit, dpi)
-        const imgHeight = convertToDots(obj.height, unit, dpi)
         zpl += `^FO${x},${y}\n`
         zpl += `^XG:${img.source || 'IMAGE'},1,1^FS\n`
         break
