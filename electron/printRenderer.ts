@@ -1,3 +1,5 @@
+const QR_VALUE_GAP = 4
+
 function toDots(value: number, unit: string, dpi = 300): number {
   switch (unit) {
     case 'mm':
@@ -39,6 +41,10 @@ function renderZPL(template: any, objects: any[]): string {
       zpl += `^FO${x},${y}\n^BY${obj.moduleWidth || 2}\n^BCN,${height},${obj.showHumanReadable ? 'Y' : 'N'},Y,N\n^FD${zplText(obj.value)}^FS\n`
     } else if (obj.type === 'qrcode') {
       zpl += `^FO${x},${y}\n^BQN,2,${Math.max(2, Math.round(Math.min(obj.width, obj.height) / 10))}\n^FDM,${zplText(obj.value)}^FS\n`
+      if (obj.showHumanReadable) {
+        const textY = y + toDots(obj.height + QR_VALUE_GAP, unit, dpi)
+        zpl += `^FO${x},${textY}\n^A0N,${toDots(10, 'pt', dpi)},${toDots(6, 'pt', dpi)}\n^FD${zplText(obj.value)}^FS\n`
+      }
     } else if (obj.type === 'shape') {
       zpl += `^FO${x},${y}\n^GB${toDots(obj.width, unit, dpi)},${toDots(obj.height, unit, dpi)},${Math.max(1, toDots(obj.borderWidth || 1, unit, dpi))},B^FS\n`
     } else if (obj.type === 'line') {
@@ -67,6 +73,9 @@ function renderTSPL(template: any, objects: any[]): string {
       tspl += `BARCODE ${x},${y},"128",${Math.max(40, toDots(obj.barcodeHeight || obj.height || 20, unit, dpi))},${obj.showHumanReadable ? 1 : 0},0,2,2,"${String(obj.value || '').replace(/"/g, "'")}"\n`
     } else if (obj.type === 'qrcode') {
       tspl += `QRCODE ${x},${y},M,${Math.max(3, Math.round(Math.min(obj.width, obj.height) / 20))},A,0,"${String(obj.value || '').replace(/"/g, "'")}"\n`
+      if (obj.showHumanReadable) {
+        tspl += `TEXT ${x},${y + toDots(obj.height + QR_VALUE_GAP, unit, dpi)},"0",0,1,1,"${String(obj.value || '').replace(/"/g, "'")}"\n`
+      }
     } else if (obj.type === 'shape') {
       tspl += `BOX ${x},${y},${x + toDots(obj.width, unit, dpi)},${y + toDots(obj.height, unit, dpi)},${Math.max(1, toDots(obj.borderWidth || 1, unit, dpi))}\n`
     }

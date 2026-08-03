@@ -106,6 +106,7 @@ export interface QRCodeObject extends LabelObject {
   type: 'qrcode'
   barcodeType?: string
   value: string
+  showHumanReadable?: boolean
   errorCorrectionLevel: string
   quietZone: number
   foregroundColor: string

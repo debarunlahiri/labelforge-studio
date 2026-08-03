@@ -7,6 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { useTemplateStore } from '../store/templateStore'
+import { APP_NAME } from '../../shared/branding'
 
 interface DashboardCard {
   title: string
@@ -76,7 +77,7 @@ export default function Dashboard() {
         <div className="absolute right-48 top-20 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="relative flex flex-wrap items-center justify-between gap-6">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Welcome to Label Maker</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Welcome to {APP_NAME}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Design labels, manage printers, and monitor production from one workspace.</p>
           </div>
           <div className="flex gap-3">

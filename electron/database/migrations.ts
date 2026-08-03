@@ -143,6 +143,15 @@ const MIGRATIONS: { version: number; sql: string }[] = [
         AND variable_value = 'LabelForge Studio';
     `,
   },
+  {
+    version: 3,
+    sql: `
+      UPDATE global_variables
+      SET variable_value = 'Label Studio', updated_at = datetime('now')
+      WHERE variable_key = 'company_name'
+        AND variable_value IN ('Label Maker', 'LabelForge Studio');
+    `,
+  },
 ]
 
 export function runMigrations(db: SqlJsDatabase): void {

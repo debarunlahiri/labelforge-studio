@@ -8,6 +8,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { useSearchParams } from 'react-router-dom'
 import PageHero from '../components/PageHero'
+import { APP_NAME } from '../../shared/branding'
 
 type HelpSection = 'getting-started' | 'designer' | 'printing' | 'shortcuts'
 
@@ -65,7 +66,7 @@ export default function Help() {
       <PageHero
         eyebrow="Guides and reference"
         title="Help"
-        description="Learn the main Label Maker workflows and keyboard shortcuts."
+        description={`Learn the main ${APP_NAME} workflows and keyboard shortcuts.`}
         icon={faCircleQuestion}
         accent="violet"
       />
@@ -133,7 +134,7 @@ export default function Help() {
             'Install or connect the printer through Windows, macOS, or Linux first.',
             'Open Settings or Printers and run detection.',
             'Choose a detected device as the default printer if desired.',
-            'Label Maker uses the operating-system printer and driver names directly.',
+            `${APP_NAME} uses the operating-system printer and driver names directly.`,
           ]} />
           <GuideCard title="Print a design" steps={[
             `Open a saved design and press ${modifier}+P, or choose Print in the toolbar.`,

@@ -28,6 +28,7 @@ import {
   faUndo,
 } from '@fortawesome/free-solid-svg-icons'
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import { APP_NAME } from '../../shared/branding'
 
 interface ToolbarProps {
   onSave: () => void
@@ -58,7 +59,7 @@ interface ToolbarProps {
 }
 
 const exportFormats = [
-  { value: 'labelforge', label: 'Label Maker' },
+  { value: 'labelforge', label: APP_NAME },
   { value: 'pdf', label: 'PDF' },
   { value: 'jpeg', label: 'JPEG' },
   { value: 'png', label: 'PNG' },

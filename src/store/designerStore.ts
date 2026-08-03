@@ -31,7 +31,7 @@ interface DesignerState {
   setSnapToGrid: (enabled: boolean) => void
   setGridSize: (size: number) => void
   setCanvasSize: (width: number, height: number) => void
-  clipboard: LabelObject | null
+  clipboard: LabelObject[]
   copyObject: () => void
   pasteObject: () => void
   duplicateObject: () => void
@@ -104,40 +104,48 @@ export const useDesignerStore = create<DesignerState>((set) => ({
       )
     ),
 
-  clipboard: null,
+  clipboard: [],
 
   copyObject: () =>
     set((state) => {
-      const selected = state.objects.find((obj) => obj.id === state.selectedObjectId)
-      if (!selected) return state
+      const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id))
+      if (selected.length === 0) return state
       return { clipboard: selected }
     }),
 
   pasteObject: () =>
     set((state) => {
-      if (!state.clipboard) return state
-      const newObj: LabelObject = {
-        ...state.clipboard,
+      if (state.clipboard.length === 0) return state
+      const pastedObjects = state.clipboard.map((object) => ({
+        ...object,
         id: uuidv4(),
-        name: state.clipboard.name + ' (Copy)',
-        x: state.clipboard.x + 10,
-        y: state.clipboard.y + 10,
+        name: `${object.name} (Copy)`,
+        x: object.x + 10,
+        y: object.y + 10,
+      }))
+      return {
+        ...pushToHistory(state, [...state.objects, ...pastedObjects]),
+        selectedObjectIds: pastedObjects.map((object) => object.id),
+        selectedObjectId: pastedObjects[0].id,
       }
-      return pushToHistory(state, [...state.objects, newObj])
     }),
 
   duplicateObject: () =>
     set((state) => {
-      const selected = state.objects.find((obj) => obj.id === state.selectedObjectId)
-      if (!selected) return state
-      const newObj: LabelObject = {
-        ...selected,
+      const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id))
+      if (selected.length === 0) return state
+      const duplicates = selected.map((object) => ({
+        ...object,
         id: uuidv4(),
-        name: selected.name + ' (Copy)',
-        x: selected.x + 10,
-        y: selected.y + 10,
+        name: `${object.name} (Copy)`,
+        x: object.x + 10,
+        y: object.y + 10,
+      }))
+      return {
+        ...pushToHistory(state, [...state.objects, ...duplicates]),
+        selectedObjectIds: duplicates.map((object) => object.id),
+        selectedObjectId: duplicates[0].id,
       }
-      return pushToHistory(state, [...state.objects, newObj])
     }),
 
   groupSelectedObjects: () =>
@@ -185,12 +193,14 @@ export const useDesignerStore = create<DesignerState>((set) => ({
     }),
 
   deleteSelectedObjects: () =>
-    set((state) =>
-      pushToHistory(
+    set((state) => ({
+      ...pushToHistory(
         state,
         state.objects.filter((obj) => !state.selectedObjectIds.includes(obj.id))
-      )
-    ),
+      ),
+      selectedObjectId: null,
+      selectedObjectIds: [],
+    })),
 
   setZoom: (zoom) => set({ zoom: Math.max(0.1, Math.min(5, zoom)) }),
 

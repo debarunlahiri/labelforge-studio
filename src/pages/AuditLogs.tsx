@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import PageHero from '../components/PageHero'
 import { faShieldHalved } from '@fortawesome/free-solid-svg-icons'
+import { APP_NAME } from '../../shared/branding'
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState<any[]>([])
@@ -30,7 +31,7 @@ export default function AuditLogs() {
       <PageHero
         eyebrow="System activity"
         title="Audit Logs"
-        description="Inspect recorded actions and operational changes across Label Maker."
+        description={`Inspect recorded actions and operational changes across ${APP_NAME}.`}
         icon={faShieldHalved}
         actions={
         <button

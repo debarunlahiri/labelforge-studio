@@ -21,6 +21,8 @@ interface ServerTemplateCanvas {
   objects: ServerLabelObject[]
 }
 
+const QR_VALUE_GAP = 4
+
 function convertToDots(value: number, unit: string, dpi: number): number {
   switch (unit) {
     case 'mm':
@@ -101,6 +103,10 @@ export function generateZPL(templateJson: string): string {
         zpl += `^FO${x},${y}\n`
         zpl += `^BQN,${modelSize},${magnification}\n`
         zpl += `^FD${ecLevel},${obj.value || ''}^FS\n`
+        if (obj.showHumanReadable) {
+          const textY = y + convertToDots((obj.height || 100) + QR_VALUE_GAP, unit, dpi)
+          zpl += `^FO${x},${textY}\n^A0N,${convertToDots(10, 'pt', dpi)},${convertToDots(6, 'pt', dpi)}\n^FD${obj.value || ''}^FS\n`
+        }
         break
       }
       case 'shape': {

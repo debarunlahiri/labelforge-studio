@@ -474,6 +474,7 @@ function buildPrintHtml(dataUrl: string, width: number, height: number, unit: st
       display: block;
       width: ${cssWidth};
       height: ${cssHeight};
+      image-rendering: pixelated;
     }
   </style>
 </head>

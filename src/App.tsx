@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Layout from './components/Layout'
+import { APP_NAME } from '../shared/branding'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const TemplateLibrary = lazy(() => import('./pages/TemplateLibrary'))
@@ -33,7 +34,7 @@ function StartupRoute() {
       .catch(() => setDestination('/app/dashboard'))
   }, [])
 
-  return destination ? <Navigate to={destination} replace /> : <div className="flex h-full items-center justify-center text-slate-500">Opening Label Maker…</div>
+  return destination ? <Navigate to={destination} replace /> : <div className="flex h-full items-center justify-center text-slate-500">Opening {APP_NAME}…</div>
 }
 
 function OpenTemplateFileBridge() {
@@ -58,7 +59,7 @@ function OpenTemplateFileBridge() {
           throw new Error(imported?.error || 'Template could not be imported')
         }
       } catch (error) {
-        console.error('Failed to open Label Maker template file:', error)
+        console.error(`Failed to open ${APP_NAME} template file:`, error)
       } finally {
         await window.electronAPI?.app.clearPendingOpenTemplateFile(filePath)
       }

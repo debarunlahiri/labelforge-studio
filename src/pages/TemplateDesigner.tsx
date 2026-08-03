@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Stage, Layer, Rect, Text, Line, Group, Transformer, useStrictMode as setKonvaStrictMode } from 'react-konva'
+import { Stage, Layer, Rect, Line, Transformer, useStrictMode as setKonvaStrictMode } from 'react-konva'
 import { useTemplateStore } from '../store/templateStore'
 import { useDesignerStore } from '../store/designerStore'
-import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject, DataSourceConfig, Template, TemplateCanvas, DateTimeObject, CounterObject } from '../types'
+import type { LabelObject, TextObject, BarcodeObject, QRCodeObject, ShapeObject, LineObject as LineObjType, ImageObject, DataSourceConfig, Template, TemplateCanvas } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 import PropertiesPanel from '../designer/PropertiesPanel'
 import LayersPanel from '../designer/LayersPanel'
@@ -11,14 +11,11 @@ import Toolbar from '../designer/Toolbar'
 import DataSourcePanel from '../designer/DataSourcePanel'
 import ArtboardPanel from '../designer/ArtboardPanel'
 import Ruler from '../designer/Ruler'
-import BarcodeRenderer from '../designer/BarcodeRenderer'
-import ImageRenderer from '../designer/ImageRenderer'
-import ShapeRenderer from '../designer/ShapeRenderer'
-import RichTextRenderer from '../designer/RichTextRenderer'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { renderToJPEG, renderToPDF, renderToPNG } from '../utils/labelRenderer'
-import { formatDateTimeObject, formatCounter } from '../utils/dynamicFields'
 import NewTemplateWizard from './template-designer/NewTemplateWizard'
+import DesignerObject from './template-designer/DesignerObject'
+import { getLineVisualHeight } from './template-designer/canvasGeometry'
 import ObjectContextMenu, { type ImageContextAction } from './template-designer/ObjectContextMenu'
 import DesignerStatusBar from './template-designer/DesignerStatusBar'
 import type {
@@ -27,6 +24,7 @@ import type {
   NewTemplateData,
 } from './template-designer/types'
 import { useConfirm } from '../hooks/useConfirm'
+import { APP_NAME, APP_TEMPLATE_NAME } from '../../shared/branding'
 
 const UNIT_TO_PX: Record<string, number> = {
   mm: 3.78,
@@ -59,6 +57,12 @@ type InlineTextEditorState = {
   value: string
 }
 
+type SelectionBox = Bounds & {
+  startX: number
+  startY: number
+  additive: boolean
+}
+
 const SNAP_TOLERANCE = 6
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 4
@@ -72,17 +76,6 @@ const TRANSFORMER_ROTATE_OFFSET = 28
 type ExportFormat = 'labelforge' | 'pdf' | 'jpeg' | 'png'
 const ROTATION_SNAPS = [0, 45, 90, 135, 180, 225, 270, 315]
 const ROTATION_SNAP_TOLERANCE = 6
-
-function getLineVisualHeight(line: LineObjType): number {
-  return Math.max(12, line.lineThickness || 1)
-}
-
-function getLineNodePosition(line: LineObjType) {
-  return {
-    x: line.x + line.width / 2,
-    y: line.y + getLineVisualHeight(line) / 2,
-  }
-}
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))))
@@ -150,6 +143,7 @@ export default function TemplateDesigner() {
   const [rulerOffset, setRulerOffset] = useState({ x: 0, y: 0 })
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
   const [inlineTextEditor, setInlineTextEditor] = useState<InlineTextEditorState | null>(null)
+  const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null)
   const [textSelection, setTextSelection] = useState({ start: 0, end: 0 })
   const [documentFilePath, setDocumentFilePath] = useState<string | null>(null)
   const stageRef = useRef<any>(null)
@@ -182,6 +176,7 @@ export default function TemplateDesigner() {
     startY: number
     objectIds: string[]
   } | null>(null)
+  const selectionJustCompletedRef = useRef(false)
   const getNodeId = (id: string) => `object-${id}`
   const getTemplateFilePathSettingKey = (templateId: string) => `template_file_path_${templateId}`
 
@@ -317,7 +312,7 @@ export default function TemplateDesigner() {
 
       const fileSave = pending.filePath && pending.template
         ? window.electronAPI?.app.saveFile({
-            title: 'Save Label Maker Template',
+            title: `Save ${APP_TEMPLATE_NAME}`,
             filePath: pending.filePath,
             showDialog: false,
             extension: '.lfx',
@@ -557,13 +552,13 @@ export default function TemplateDesigner() {
           .replace(/\s+/g, ' ')
           || 'Untitled Label'
         const saveResult = await window.electronAPI?.app.saveFile({
-          title: saveAs ? 'Save Label Maker Template As' : 'Save Label Maker Template',
+          title: saveAs ? `Save ${APP_TEMPLATE_NAME} As` : `Save ${APP_TEMPLATE_NAME}`,
           defaultPath: `${safeName}.lfx`,
           filePath: saveAs ? undefined : documentFilePathRef.current || undefined,
           showDialog: saveAs || !documentFilePathRef.current,
           extension: '.lfx',
           filters: [
-            { name: 'Label Maker Template', extensions: ['lfx'] },
+            { name: APP_TEMPLATE_NAME, extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           content: JSON.stringify(exportData, null, 2),
@@ -640,10 +635,10 @@ export default function TemplateDesigner() {
           canvas: canvasData,
         }
         const result = await window.electronAPI?.app.saveFile({
-          title: 'Export Label Maker File',
+          title: `Export ${APP_NAME} File`,
           defaultPath: `${getSafeTemplateName()}.lfx`,
           filters: [
-            { name: 'Label Maker', extensions: ['lfx'] },
+            { name: APP_NAME, extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           extension: '.lfx',
@@ -744,6 +739,7 @@ export default function TemplateDesigner() {
         } as QRCodeObject
         ;(obj as QRCodeObject).barcodeType = 'QRCode'
         ;(obj as QRCodeObject).value = 'https://example.com'
+        ;(obj as QRCodeObject).showHumanReadable = false
         ;(obj as QRCodeObject).errorCorrectionLevel = 'M'
         ;(obj as QRCodeObject).quietZone = 4
         ;(obj as QRCodeObject).foregroundColor = '#000000'
@@ -821,6 +817,10 @@ export default function TemplateDesigner() {
 
   const handleStageClick = (e: any) => {
     if (e.evt.button === 2) return
+    if (selectionJustCompletedRef.current) {
+      selectionJustCompletedRef.current = false
+      return
+    }
     setContextMenu(null)
     if (e.target === e.target.getStage() || e.target.name() === 'canvas-bg') {
       if (!e.evt.metaKey && !e.evt.ctrlKey) {
@@ -854,9 +854,15 @@ export default function TemplateDesigner() {
   }, [])
 
   const updateObjectFromProperties = useCallback((objectId: string, updates: Partial<LabelObject>) => {
-    updateObject(objectId, updates)
-    syncCanvasNode(objectId, updates)
-  }, [syncCanvasNode, updateObject])
+    const source = objects.find((object) => object.id === objectId)
+    const targetIds = selectedObjectIds.length > 1 && selectedObjectIds.includes(objectId)
+      ? selectedObjectIds.filter((id) => objects.find((object) => object.id === id)?.type === source?.type)
+      : [objectId]
+    targetIds.forEach((id) => {
+      updateObject(id, updates)
+      syncCanvasNode(id, updates)
+    })
+  }, [objects, selectedObjectIds, syncCanvasNode, updateObject])
 
   const getObjectIdFromNode = useCallback((node: unknown): string | null => {
     let current = node
@@ -916,15 +922,83 @@ export default function TemplateDesigner() {
   }, [showContextMenuForNode])
 
   const isContextClick = useCallback((evt: MouseEvent) => {
-    return evt.button === 2 || evt.buttons === 2 || (evt.ctrlKey && evt.button === 0)
+    const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+    return evt.button === 2 || evt.buttons === 2 || (isMac && evt.ctrlKey && evt.button === 0)
   }, [])
 
-  const handleStageMouseDown = useCallback((e: any) => {
-    if (e.evt.button === 0) {
-      setContextMenu(null)
-      setRotationGuides([])
+  const getStagePointer = useCallback(() => {
+    const stage = stageRef.current
+    const pointer = stage?.getRelativePointerPosition?.()
+    if (!pointer) return null
+    return {
+      x: Math.max(0, Math.min(canvasWidth, pointer.x)),
+      y: Math.max(0, Math.min(canvasHeight, pointer.y)),
     }
-  }, [])
+  }, [canvasHeight, canvasWidth])
+
+  const handleStageMouseDown = useCallback((e: any) => {
+    if (e.evt.button !== 0) return
+    setContextMenu(null)
+    setRotationGuides([])
+    if (e.target !== e.target.getStage() && e.target.name() !== 'canvas-bg') return
+    const pointer = getStagePointer()
+    if (!pointer) return
+    setSelectionBox({
+      startX: pointer.x,
+      startY: pointer.y,
+      x: pointer.x,
+      y: pointer.y,
+      width: 0,
+      height: 0,
+      additive: e.evt.metaKey || e.evt.ctrlKey,
+    })
+  }, [getStagePointer])
+
+  const handleStageMouseMove = useCallback(() => {
+    if (!selectionBox) return
+    const pointer = getStagePointer()
+    if (!pointer) return
+    setSelectionBox((current) => current ? {
+      ...current,
+      x: Math.min(current.startX, pointer.x),
+      y: Math.min(current.startY, pointer.y),
+      width: Math.abs(pointer.x - current.startX),
+      height: Math.abs(pointer.y - current.startY),
+    } : null)
+  }, [getStagePointer, selectionBox])
+
+  const handleStageMouseUp = useCallback(() => {
+    if (!selectionBox) return
+    const dragged = selectionBox.width > 2 || selectionBox.height > 2
+    if (dragged) {
+      const right = selectionBox.x + selectionBox.width
+      const bottom = selectionBox.y + selectionBox.height
+      const enclosedIds = objects
+        .filter((object) => object.visible && !object.locked)
+        .filter((object) => {
+          const bounds = {
+            x: object.x,
+            y: object.y,
+            width: Math.max(1, object.width),
+            height: object.type === 'line'
+              ? getLineVisualHeight(object as LineObjType)
+              : Math.max(1, object.height),
+          }
+          return bounds.x < right
+            && bounds.x + bounds.width > selectionBox.x
+            && bounds.y < bottom
+            && bounds.y + bounds.height > selectionBox.y
+        })
+        .map((object) => object.id)
+      selectObjects(selectionBox.additive
+        ? Array.from(new Set([...selectedObjectIds, ...enclosedIds]))
+        : enclosedIds)
+      setShowArtboard(false)
+      setShowDataSource(false)
+      selectionJustCompletedRef.current = true
+    }
+    setSelectionBox(null)
+  }, [objects, selectObjects, selectedObjectIds, selectionBox])
 
   const handleStageContextMenu = useCallback((e: any) => {
     e.evt.preventDefault()
@@ -995,20 +1069,19 @@ export default function TemplateDesigner() {
   }, [currentTemplate?.id, navigate])
 
   const handleAlign = useCallback((action: string) => {
-    if (!selectedObjectId) return
-    const obj = objects.find(o => o.id === selectedObjectId)
-    if (!obj) return
-    switch (action) {
-      case 'alignLeft': updateObject(selectedObjectId, { x: 0 }); break
-      case 'alignRight': updateObject(selectedObjectId, { x: canvasWidth - obj.width }); break
-      case 'alignTop': updateObject(selectedObjectId, { y: 0 }); break
-      case 'alignBottom': updateObject(selectedObjectId, { y: canvasHeight - obj.height }); break
-      case 'alignCenterHorizontal': updateObject(selectedObjectId, { x: (canvasWidth - obj.width) / 2 }); break
-      case 'alignCenterVertical': updateObject(selectedObjectId, { y: (canvasHeight - obj.height) / 2 }); break
-      case 'distributeHorizontally': break
-      case 'distributeVertically': break
-    }
-  }, [selectedObjectId, objects, canvasWidth, canvasHeight, updateObject])
+    selectedObjectIds.forEach((objectId) => {
+      const object = objects.find((item) => item.id === objectId)
+      if (!object) return
+      switch (action) {
+        case 'alignLeft': updateObject(objectId, { x: 0 }); break
+        case 'alignRight': updateObject(objectId, { x: canvasWidth - object.width }); break
+        case 'alignTop': updateObject(objectId, { y: 0 }); break
+        case 'alignBottom': updateObject(objectId, { y: canvasHeight - object.height }); break
+        case 'alignCenterHorizontal': updateObject(objectId, { x: (canvasWidth - object.width) / 2 }); break
+        case 'alignCenterVertical': updateObject(objectId, { y: (canvasHeight - object.height) / 2 }); break
+      }
+    })
+  }, [selectedObjectIds, objects, canvasWidth, canvasHeight, updateObject])
 
   useKeyboardShortcuts({
     onUndo: undo,
@@ -1024,6 +1097,7 @@ export default function TemplateDesigner() {
     onZoomIn: zoomIn,
     onZoomOut: zoomOut,
     onSelectAll: () => { selectObjects(objects.map(o => o.id)) },
+    onNudge: (deltaX, deltaY) => moveObjects(selectedObjectIds, deltaX, deltaY),
   })
 
   const selectedObject = objects.find(o => o.id === selectedObjectId)
@@ -1275,11 +1349,30 @@ export default function TemplateDesigner() {
     const stage = stageRef.current
     if (!transformer || !stage) return
 
-    const nodes = selectedObjectIds
-      .map((id) => stage.findOne(`#${getNodeId(id)}`))
-      .filter(Boolean)
+    const nodes = selectedObjectIds.length === 1 ? selectedObjectIds
+      .map((id) => {
+        const object = objects.find((item) => item.id === id)
+        const node = stage.findOne(`#${getNodeId(id)}`)
+        if (!object || !node) return null
 
+        const position = object.type === 'line'
+          ? {
+              x: object.x + object.width / 2,
+              y: object.y + getLineVisualHeight(object as LineObjType) / 2,
+            }
+          : { x: object.x, y: object.y }
+
+        node.position(position)
+        node.rotation(object.rotation)
+        node.scale({ x: 1, y: 1 })
+        return node
+      })
+      .filter(Boolean) : []
+
+    transformer.rotation(0)
+    transformer.scale({ x: 1, y: 1 })
     transformer.nodes(nodes)
+    transformer.forceUpdate()
     transformer.getLayer()?.batchDraw()
   }, [selectedObjectIds, objects])
 
@@ -1391,336 +1484,27 @@ export default function TemplateDesigner() {
     closeContextMenu()
   }, [closeContextMenu, contextMenu, objects, updateObject])
 
-  const renderObject = (obj: LabelObject) => {
-    const isSelected = selectedObjectIds.includes(obj.id)
-    const isLayerFlashing = layerFlashObjectId === obj.id
-    const selectionStroke = isLayerFlashing ? '#f59e0b' : '#2563eb'
-    const selectionWidth = isLayerFlashing ? 3 : 2
+  const renderObject = (object: LabelObject) => (
+    <DesignerObject
+      key={object.id}
+      object={object}
+      selected={selectedObjectIds.includes(object.id)}
+      flashing={layerFlashObjectId === object.id}
+      inlineEditing={inlineTextEditor?.objectId === object.id}
+      onSelect={handleObjectClick}
+      onMouseDown={handleObjectMouseDown}
+      onContextMenu={handleObjectContextMenu}
+      onEditText={(textObject) => {
+        selectObject(textObject.id)
+        setInlineTextEditor({ objectId: textObject.id, value: textObject.value })
+      }}
+      onDragMove={handleObjectDragMove}
+      onDragEnd={handleObjectDragEnd}
+      onRendererDragEnd={finishRendererDrag}
+    />
+  )
 
-    switch (obj.type) {
-      case 'text': {
-        const textObj = obj as TextObject
-        return (
-          <RichTextRenderer
-            object={textObj}
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            visible={inlineTextEditor?.objectId !== obj.id}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            onDblClick={() => {
-              selectObject(obj.id)
-              setInlineTextEditor({ objectId: obj.id, value: textObj.value })
-            }}
-            onDblTap={() => {
-              selectObject(obj.id)
-              setInlineTextEditor({ objectId: obj.id, value: textObj.value })
-            }}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          />
-        )
-      }
-      case 'barcode': {
-        const bcObj = obj as BarcodeObject
-        return (
-          <BarcodeRenderer
-            key={obj.id}
-            id={getNodeId(obj.id)}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            value={bcObj.value}
-            barcodeType={bcObj.barcodeType}
-            width={obj.width}
-            height={obj.height}
-            options={{
-              showHumanReadable: bcObj.showHumanReadable,
-              moduleWidth: bcObj.moduleWidth,
-              barcodeHeight: bcObj.barcodeHeight,
-              quietZone: bcObj.quietZone,
-              foregroundColor: bcObj.foregroundColor,
-              backgroundColor: bcObj.backgroundColor,
-            }}
-            selected={isSelected || isLayerFlashing}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(x, y) => {
-              finishRendererDrag(obj, x, y)
-            }}
-          />
-        )
-      }
-      case 'qrcode': {
-        const qrObj = obj as QRCodeObject
-        return (
-          <BarcodeRenderer
-            key={obj.id}
-            id={getNodeId(obj.id)}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            value={qrObj.value}
-            barcodeType={qrObj.barcodeType || 'QRCode'}
-            width={obj.width}
-            height={obj.height}
-            options={{
-              errorCorrectionLevel: qrObj.errorCorrectionLevel,
-              quietZone: qrObj.quietZone,
-              foregroundColor: qrObj.foregroundColor,
-              backgroundColor: qrObj.backgroundColor,
-            }}
-            selected={isSelected || isLayerFlashing}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(x, y) => {
-              finishRendererDrag(obj, x, y)
-            }}
-          />
-        )
-      }
-      case 'shape': {
-        const shapeObj = obj as ShapeObject
-        return (
-          <ShapeRenderer
-            object={shapeObj}
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            stroke={(isSelected || isLayerFlashing) ? selectionStroke : shapeObj.borderColor}
-            strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : shapeObj.borderWidth}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          />
-        )
-      }
-      case 'line': {
-        const lineObj = obj as LineObjType
-        const lineHeight = getLineVisualHeight(lineObj)
-        const nodePosition = getLineNodePosition(lineObj)
-        const dragObject = { ...obj, x: nodePosition.x, y: nodePosition.y }
-        return (
-          <Group
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            x={nodePosition.x}
-            y={nodePosition.y}
-            width={Math.max(4, obj.width)}
-            height={lineHeight}
-            rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(dragObject, e)}
-            onDragEnd={(e) => handleObjectDragEnd(dragObject, e)}
-          >
-            <Rect
-              x={-obj.width / 2}
-              y={-lineHeight / 2}
-              width={Math.max(4, obj.width)}
-              height={lineHeight}
-              fill="transparent"
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : 'transparent'}
-              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 0}
-            />
-            <Line
-              points={[-obj.width / 2, 0, obj.width / 2, 0]}
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : lineObj.lineColor}
-              strokeWidth={isLayerFlashing ? Math.max(lineObj.lineThickness + 2, 3) : lineObj.lineThickness}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 10 : 0}
-              shadowOpacity={isLayerFlashing ? 0.35 : 0}
-              hitStrokeWidth={12}
-            />
-          </Group>
-        )
-      }
-      case 'counter': {
-        const cntObj = obj as CounterObject
-        const display = formatCounter(cntObj)
-        return (
-          <Group
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill="white"
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : '#999'}
-              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 1}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 10 : 0}
-              shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            />
-            <Text
-              text={display}
-              fontSize={14}
-              fontFamily="monospace"
-              fill="#333"
-              width={obj.width}
-              height={obj.height}
-              align="center"
-              verticalAlign="middle"
-            />
-          </Group>
-        )
-      }
-      case 'datetime': {
-        const dtObj = obj as DateTimeObject
-        const dateStr = formatDateTimeObject(dtObj)
-        return (
-          <Group
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill="white"
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : '#999'}
-              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 1}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 10 : 0}
-              shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            />
-            <Text
-              text={dateStr}
-              fontSize={12}
-              fill="#333"
-              width={obj.width}
-              height={obj.height}
-              align="center"
-              verticalAlign="middle"
-            />
-          </Group>
-        )
-      }
-      case 'image': {
-        const imageObj = obj as ImageObject
-        return (
-          <ImageRenderer
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            source={imageObj.source}
-            x={obj.x}
-            y={obj.y}
-            width={obj.width}
-            height={obj.height}
-            rotation={obj.rotation}
-            opacity={obj.opacity}
-            maintainAspectRatio={imageObj.maintainAspectRatio}
-            fitMode={imageObj.fitMode}
-            cropX={imageObj.cropX}
-            cropY={imageObj.cropY}
-            flipHorizontal={imageObj.flipHorizontal}
-            flipVertical={imageObj.flipVertical}
-            selected={isSelected || isLayerFlashing}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          />
-        )
-      }
-      case 'rfid': {
-        return (
-          <Group
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            rotation={obj.rotation}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          >
-            <Rect
-              width={obj.width}
-              height={obj.height}
-              fill="#e8f4f8"
-              stroke={(isSelected || isLayerFlashing) ? selectionStroke : '#0066cc'}
-              strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 1}
-              shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-              shadowBlur={isLayerFlashing ? 10 : 0}
-              shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            />
-            <Text
-              text="RFID"
-              fontSize={12}
-              fill="#0066cc"
-              width={obj.width}
-              height={obj.height}
-              align="center"
-              verticalAlign="middle"
-            />
-          </Group>
-        )
-      }
-      default:
-        return (
-          <Rect
-            id={getNodeId(obj.id)}
-            key={obj.id}
-            x={obj.x}
-            y={obj.y}
-            width={obj.width}
-            height={obj.height}
-            fill="#E0E0E0"
-            stroke={(isSelected || isLayerFlashing) ? selectionStroke : '#999'}
-            strokeWidth={(isSelected || isLayerFlashing) ? selectionWidth : 1}
-            shadowColor={isLayerFlashing ? '#f59e0b' : undefined}
-            shadowBlur={isLayerFlashing ? 10 : 0}
-            shadowOpacity={isLayerFlashing ? 0.35 : 0}
-            onClick={(e) => handleObjectClick(obj.id, e.evt.metaKey || e.evt.ctrlKey)}
-            onMouseDown={(e) => handleObjectMouseDown(obj.id, e)}
-            onContextMenu={(e) => handleObjectContextMenu(obj.id, e)}
-            onTap={() => handleObjectClick(obj.id, false)}
-            draggable
-            onDragMove={(e) => handleObjectDragMove(obj, e)}
-            onDragEnd={(e) => handleObjectDragEnd(obj, e)}
-          />
-        )
-    }
-  }
+  const multiSelectionBounds = selectedObjectIds.length > 1 ? getSelectionBounds() : null
 
   if (showNewWizard) {
     return (
@@ -1861,6 +1645,9 @@ export default function TemplateDesigner() {
                     height={canvasHeight * zoom + 4}
                     onClick={handleStageClick}
                     onMouseDown={handleStageMouseDown}
+                    onMouseMove={handleStageMouseMove}
+                    onMouseUp={handleStageMouseUp}
+                    onMouseLeave={handleStageMouseUp}
                     onContextMenu={handleStageContextMenu}
                     scale={{ x: zoom, y: zoom }}
                   >
@@ -1877,6 +1664,32 @@ export default function TemplateDesigner() {
                       />
                       {gridLines}
                       {objects.filter(o => o.visible).map(renderObject)}
+                      {multiSelectionBounds && (
+                        <Rect
+                          x={multiSelectionBounds.x}
+                          y={multiSelectionBounds.y}
+                          width={multiSelectionBounds.width}
+                          height={multiSelectionBounds.height}
+                          fill="transparent"
+                          stroke="#2563eb"
+                          strokeWidth={1.5 / zoom}
+                          dash={[6 / zoom, 4 / zoom]}
+                          listening={false}
+                        />
+                      )}
+                      {selectionBox && (
+                        <Rect
+                          x={selectionBox.x}
+                          y={selectionBox.y}
+                          width={selectionBox.width}
+                          height={selectionBox.height}
+                          fill="rgba(37, 99, 235, 0.12)"
+                          stroke="#2563eb"
+                          strokeWidth={1 / zoom}
+                          dash={[4 / zoom, 3 / zoom]}
+                          listening={false}
+                        />
+                      )}
                       {smartGuides.map((guide, index) => (
                         <Line
                           key={`${guide.orientation}-${guide.position}-${index}`}

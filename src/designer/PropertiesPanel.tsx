@@ -573,6 +573,14 @@ export default function PropertiesPanel({ object, onUpdate, onDelete, textSelect
                 />
               </Field>
 
+              <ToggleButton
+                active={qrObj.showHumanReadable ?? false}
+                icon={faQrcode}
+                label="Show QR code value"
+                description="Show or hide the QR code value beneath the code."
+                onClick={() => handleChange('showHumanReadable', !(qrObj.showHumanReadable ?? false))}
+              />
+
               <Field label="Error correction">
                 <select
                   value={qrObj.errorCorrectionLevel}

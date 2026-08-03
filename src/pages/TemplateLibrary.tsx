@@ -16,6 +16,7 @@ import { useTemplateStore } from '../store/templateStore'
 import TemplateThumbnail from '../components/TemplateThumbnail'
 import PageHero from '../components/PageHero'
 import { useConfirm } from '../hooks/useConfirm'
+import { APP_NAME, APP_TEMPLATE_NAME } from '../../shared/branding'
 
 const statusOptions = [
   { value: '', label: 'All Statuses' },
@@ -100,10 +101,10 @@ export default function TemplateLibrary() {
       if (data) {
         const json = JSON.stringify(data, null, 2)
         await window.electronAPI?.app.saveFile({
-          title: 'Save Label Maker File',
+          title: `Save ${APP_NAME} File`,
           defaultPath: `${data.template?.name || 'template'}.lfx`,
           filters: [
-            { name: 'Label Maker', extensions: ['lfx'] },
+            { name: APP_NAME, extensions: ['lfx'] },
             { name: 'JSON Document', extensions: ['json'] },
           ],
           extension: '.lfx',
@@ -118,7 +119,7 @@ export default function TemplateLibrary() {
     try {
       const filePath = await window.electronAPI?.app.selectFile({
         title: 'Import Template',
-        filters: [{ name: 'Label Maker Template', extensions: ['json', 'lfx'] }],
+        filters: [{ name: APP_TEMPLATE_NAME, extensions: ['json', 'lfx'] }],
       })
       if (!filePath) return
       const response = await fetch(`file://${filePath}`)

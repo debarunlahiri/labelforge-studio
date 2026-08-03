@@ -13,6 +13,7 @@ import {
 import PageHero from '../components/PageHero'
 import SearchableSelect from '../components/SearchableSelect'
 import { PRESET_SIZES } from './template-designer/NewTemplateWizard'
+import { APP_NAME, LEGACY_APP_NAMES } from '../../shared/branding'
 
 export default function Settings() {
   const [generalSettings, setGeneralSettings] = useState({
@@ -59,10 +60,9 @@ export default function Settings() {
       const settings = await window.electronAPI?.settings.getAll() || {}
       const companyVar = vars.find((v: any) => v.variable_key === 'company_name')
       const plantVar = vars.find((v: any) => v.variable_key === 'plant_code')
-      const companyName = companyVar?.variable_value === 'LabelForge Studio'
-        ? 'Label Maker'
-        : companyVar?.variable_value || ''
-      if (companyVar?.variable_value === 'LabelForge Studio') {
+      const isLegacyDefault = LEGACY_APP_NAMES.includes(companyVar?.variable_value)
+      const companyName = isLegacyDefault ? APP_NAME : companyVar?.variable_value || ''
+      if (isLegacyDefault) {
         await window.electronAPI?.globalVariables.update(companyVar.id, { variable_value: companyName })
       }
       setIdentityVariableIds({ companyName: companyVar?.id || '', plantCode: plantVar?.id || '' })
@@ -202,7 +202,7 @@ export default function Settings() {
       <PageHero
         eyebrow="Application preferences"
         title="Settings"
-        description="Choose how Label Maker creates, saves, and prints your labels."
+        description={`Choose how ${APP_NAME} creates, saves, and prints your labels.`}
         icon={faDisplay}
         actions={
         <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
@@ -401,7 +401,7 @@ export default function Settings() {
                         ),
                     ]}
                   />
-                  <p className="mt-2 text-xs text-slate-500">Only printers detected by your operating system are listed. Label Maker uses the real system printer name.</p>
+                  <p className="mt-2 text-xs text-slate-500">Only printers detected by your operating system are listed. {APP_NAME} uses the real system printer name.</p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-800">Preferred print method</label>
@@ -537,7 +537,7 @@ export default function Settings() {
               <FontAwesomeIcon icon={faRocket} />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-900">When Label Maker starts</h2>
+              <h2 className="font-semibold text-slate-900">When {APP_NAME} starts</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600">Choose what you want to see first when opening the application.</p>
             </div>
           </div>
@@ -577,7 +577,7 @@ export default function Settings() {
 
       <footer className="border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-          <span>Label Maker v{appVersion}</span>
+          <span>{APP_NAME} v{appVersion}</span>
           <span aria-hidden="true">•</span>
           <span>Proprietary License</span>
           <span aria-hidden="true">•</span>

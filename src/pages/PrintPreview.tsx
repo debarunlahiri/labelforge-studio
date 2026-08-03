@@ -262,6 +262,7 @@ async function composePageOntoCanvas(
       : getGridLabelPositionsPx(labelsPerPage, pageWidthPx, pageHeightPx, labelWidthPx, labelHeightPx, gapXPx, gapYPx, marginsPx)
 
   for (const pos of positions) {
+    ctx.imageSmoothingEnabled = false
     ctx.drawImage(labelCanvas, pos.x, pos.y, labelWidthPx, labelHeightPx)
 
     if (applyBorder) {

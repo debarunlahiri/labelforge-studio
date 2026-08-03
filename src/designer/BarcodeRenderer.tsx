@@ -37,6 +37,8 @@ interface BarcodeResult {
   error: string | null
 }
 
+const QR_VALUE_GAP = 4
+
 function renderBarcodeToDataUrl(
   bwipType: string,
   value: string,
@@ -46,13 +48,14 @@ function renderBarcodeToDataUrl(
 ): BarcodeResult {
   try {
     const canvas = document.createElement('canvas')
+    const isTwoDimensional = ['qrcode', 'datamatrix', 'gs1datamatrix', 'pdf417', 'azteccode', 'maxicode'].includes(bwipType)
     const opts: any = {
       bcid: bwipType,
       text: value,
       scale: 3,
       width: width,
       height: options?.barcodeHeight || height,
-      includetext: options?.showHumanReadable ?? false,
+      includetext: (options?.showHumanReadable ?? false) && !isTwoDimensional,
       barcolor: options?.foregroundColor || '000000',
       backgroundcolor: options?.backgroundColor || 'FFFFFF',
     }
@@ -98,16 +101,16 @@ export default function BarcodeRenderer({
 }: BarcodeRendererProps) {
   const symbology = symbologyByValue[barcodeType]
   const bwipType = useMemo(() => getBwipSymbology(barcodeType), [barcodeType])
-
-  const isQR = useMemo(() => {
-    return bwipType === 'qrcode' || bwipType === 'datamatrix' || bwipType === 'gs1datamatrix' || bwipType === 'pdf417' || bwipType === 'azteccode' || bwipType === 'maxicode'
-  }, [bwipType])
+  const isTwoDimensional = useMemo(
+    () => ['qrcode', 'datamatrix', 'gs1datamatrix', 'pdf417', 'azteccode', 'maxicode'].includes(bwipType),
+    [bwipType]
+  )
 
   const showHumanReadable = options?.showHumanReadable ?? false
   const foregroundColor = options?.foregroundColor || '#000000'
   const backgroundColor = options?.backgroundColor || '#FFFFFF'
-  const humanReadableHeight = showHumanReadable && !isQR ? 18 : 0
-  const barcodeAreaHeight = height - humanReadableHeight
+  const humanReadableHeight = showHumanReadable && !isTwoDimensional ? 18 : 0
+  const barcodeAreaHeight = Math.max(1, height - humanReadableHeight)
 
   const barcodeResult = useMemo(() => {
     if (symbology?.supported === false || !bwipType) {
@@ -228,13 +231,13 @@ export default function BarcodeRenderer({
         />
       )}
 
-      {showHumanReadable && !isQR && (
+      {showHumanReadable && (
         <Text
           text={value}
           fontSize={10}
           fill={foregroundColor}
           width={width}
-          y={barcodeAreaHeight}
+          y={isTwoDimensional ? height + QR_VALUE_GAP : barcodeAreaHeight}
           align="center"
         />
       )}

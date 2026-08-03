@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faExpand, faRulerCombined } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faExpand, faRulerCombined } from '@fortawesome/free-solid-svg-icons'
 import type { Template } from '../types'
 
 interface ArtboardPanelProps {
@@ -24,9 +25,35 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps) {
-  const updateNumber = (key: 'label_width' | 'label_height', value: string) => {
-    const next = Math.max(1, Number(value) || 1)
-    onUpdate({ [key]: next })
+  const [width, setWidth] = useState(String(template.label_width))
+  const [height, setHeight] = useState(String(template.label_height))
+  const [unit, setUnit] = useState(template.unit)
+  const [dpi, setDpi] = useState(template.dpi)
+
+  useEffect(() => {
+    setWidth(String(template.label_width))
+    setHeight(String(template.label_height))
+    setUnit(template.unit)
+    setDpi(template.dpi)
+  }, [template.label_width, template.label_height, template.unit, template.dpi])
+
+  const parsedWidth = Number(width)
+  const parsedHeight = Number(height)
+  const isValid = Number.isFinite(parsedWidth) && parsedWidth >= 1
+    && Number.isFinite(parsedHeight) && parsedHeight >= 1
+  const hasChanges = parsedWidth !== template.label_width
+    || parsedHeight !== template.label_height
+    || unit !== template.unit
+    || dpi !== template.dpi
+
+  const applyChanges = () => {
+    if (!isValid || !hasChanges) return
+    onUpdate({
+      label_width: parsedWidth,
+      label_height: parsedHeight,
+      unit,
+      dpi,
+    })
   }
 
   return (
@@ -59,8 +86,8 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
                   type="number"
                   min={1}
                   step={0.1}
-                  value={template.label_width}
-                  onChange={(e) => updateNumber('label_width', e.target.value)}
+                  value={width}
+                  onChange={(e) => setWidth(e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -69,8 +96,8 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
                   type="number"
                   min={1}
                   step={0.1}
-                  value={template.label_height}
-                  onChange={(e) => updateNumber('label_height', e.target.value)}
+                  value={height}
+                  onChange={(e) => setHeight(e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -79,8 +106,8 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
             <div className="designer-panel-grid grid min-w-0 grid-cols-2 gap-x-5 gap-y-6">
               <Field label="Unit">
                 <select
-                  value={template.unit}
-                  onChange={(e) => onUpdate({ unit: e.target.value })}
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
                   className={inputClass}
                 >
                   <option value="mm">mm</option>
@@ -91,8 +118,8 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
               </Field>
               <Field label="DPI">
                 <select
-                  value={template.dpi}
-                  onChange={(e) => onUpdate({ dpi: Number(e.target.value) })}
+                  value={dpi}
+                  onChange={(e) => setDpi(Number(e.target.value))}
                   className={inputClass}
                 >
                   <option value={203}>203</option>
@@ -103,8 +130,18 @@ export default function ArtboardPanel({ template, onUpdate }: ArtboardPanelProps
             </div>
 
             <div className="mt-2 whitespace-normal break-words rounded-lg border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
-              Changing the artboard resizes the template. Existing items keep their current positions.
+              Changes take effect after you select Apply. Existing items keep their current positions.
             </div>
+
+            <button
+              type="button"
+              onClick={applyChanges}
+              disabled={!isValid || !hasChanges}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <FontAwesomeIcon icon={faCheck} />
+              Apply
+            </button>
           </div>
         </section>
       </div>

@@ -14,6 +14,7 @@ interface KeyboardShortcutHandlers {
   onZoomIn: () => void
   onZoomOut: () => void
   onSelectAll: () => void
+  onNudge?: (deltaX: number, deltaY: number) => void
 }
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
@@ -54,6 +55,19 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputFocused) {
         e.preventDefault()
         handlers.onDelete()
+        return
+      }
+
+      if (!isInputFocused && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault()
+        const distance = e.shiftKey ? 10 : 1
+        const offsets: Record<string, [number, number]> = {
+          ArrowLeft: [-distance, 0],
+          ArrowRight: [distance, 0],
+          ArrowUp: [0, -distance],
+          ArrowDown: [0, distance],
+        }
+        handlers.onNudge?.(...offsets[e.key])
         return
       }
 

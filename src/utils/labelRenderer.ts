@@ -13,6 +13,9 @@ import { styleAt } from '../designer/richText'
 import bwipjs from 'bwip-js'
 import { getBwipSymbology, getSampleValueForSymbology, isQrFamilySymbology, symbologyByValue } from '../designer/symbologies'
 import { formatDateTimeObject, formatCounter } from './dynamicFields'
+import { APP_NAME } from '../../shared/branding'
+
+const QR_VALUE_GAP = 4
 
 function convertToDots(value: number, unit: string, dpi: number): number {
   switch (unit) {
@@ -239,6 +242,7 @@ export async function renderToCanvas(
         ctx.fillRect(0, 0, obj.width, obj.height)
         const barcodeImage = renderedBarcodes.get(obj.id)
         if (barcodeImage) {
+          ctx.imageSmoothingEnabled = false
           ctx.drawImage(barcodeImage, 0, 0, obj.width, barcodeAreaHeight)
         }
         if (showHumanReadable) {
@@ -252,11 +256,20 @@ export async function renderToCanvas(
       }
       case 'qrcode': {
         const qr = obj as QRCodeObject
+        const showHumanReadable = qr.showHumanReadable ?? false
         ctx.fillStyle = qr.backgroundColor
         ctx.fillRect(0, 0, obj.width, obj.height)
         const qrImage = renderedBarcodes.get(obj.id)
         if (qrImage) {
+          ctx.imageSmoothingEnabled = false
           ctx.drawImage(qrImage, 0, 0, obj.width, obj.height)
+        }
+        if (showHumanReadable) {
+          ctx.fillStyle = qr.foregroundColor || '#000000'
+          ctx.font = '10px Arial'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'top'
+          ctx.fillText(qr.value, obj.width / 2, obj.height + QR_VALUE_GAP)
         }
         break
       }
@@ -452,7 +465,7 @@ function buildSimplePDF(
   append(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${pixelWidth} /Height ${pixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgUint8.length} >>\nstream\n`)
   append(imgUint8)
   append('\nendstream\nendobj\n')
-  appendObject('6 0 obj\n<< /Producer (Label Maker) >>\nendobj\n')
+  appendObject(`6 0 obj\n<< /Producer (${APP_NAME}) >>\nendobj\n`)
 
   const xrefOffset = byteLength
   append(`xref\n0 7\n0000000000 65535 f \n${offsets.map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('')}`)
@@ -530,6 +543,10 @@ export function renderToZPL(
         zpl += `^FO${x},${y}\n`
         zpl += `^BQN,${modelSize},${magnification}\n`
         zpl += `^FD${ecLevel},${qr.value}^FS\n`
+        if (qr.showHumanReadable) {
+          const textY = y + convertToDots(obj.height + QR_VALUE_GAP, unit, dpi)
+          zpl += `^FO${x},${textY}\n^A0N,${convertToDots(10, 'pt', dpi)},${convertToDots(6, 'pt', dpi)}\n^FD${qr.value}^FS\n`
+        }
         break
       }
       case 'shape': {
@@ -672,6 +689,9 @@ export function renderToEPL(
       case 'qrcode': {
         const qr = obj as QRCodeObject
         epl += `b${x},${y},Q,s${Math.max(3, Math.round(Math.min(obj.width, obj.height) / 24))},"${qr.value.replace(/"/g, "'")}"\n`
+        if (qr.showHumanReadable) {
+          epl += `A${x},${y + Math.round(obj.height + QR_VALUE_GAP)},0,2,1,1,N,"${qr.value.replace(/"/g, "'")}"\n`
+        }
         break
       }
       case 'shape': {
@@ -720,6 +740,9 @@ export function renderToTSPL(
         const qr = obj as QRCodeObject
         const text = qr.value.replace(/"/g, "'")
         tspl += `QRCODE ${x},${y},M,${Math.max(3, Math.round(Math.min(obj.width, obj.height) / 20))},A,${rotationToDegrees(obj.rotation)},"${text}"\n`
+        if (qr.showHumanReadable) {
+          tspl += `TEXT ${x},${y + Math.round(obj.height + QR_VALUE_GAP)},"0",0,1,1,"${text}"\n`
+        }
         break
       }
       case 'shape': {

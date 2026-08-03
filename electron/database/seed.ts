@@ -1,5 +1,6 @@
 import type { Database as SqlJsDatabase } from 'sql.js'
 import { v4 as uuidv4 } from 'uuid'
+import { APP_NAME } from '../../shared/branding.js'
 
 export function seedDatabase(db: SqlJsDatabase): void {
   const result = db.exec('SELECT COUNT(*) as count FROM global_variables')
@@ -7,7 +8,7 @@ export function seedDatabase(db: SqlJsDatabase): void {
   if (count > 0) return
 
   const globalVariables = [
-    { id: uuidv4(), key: 'company_name', value: 'Label Maker', data_type: 'string', description: 'Company name' },
+    { id: uuidv4(), key: 'company_name', value: APP_NAME, data_type: 'string', description: 'Company name' },
     { id: uuidv4(), key: 'plant_code', value: 'PL01', data_type: 'string', description: 'Plant code' },
     { id: uuidv4(), key: 'factory_address', value: '', data_type: 'string', description: 'Factory address' },
     { id: uuidv4(), key: 'gst_number', value: '', data_type: 'string', description: 'GST number' },

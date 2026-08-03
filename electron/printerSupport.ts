@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process'
 import net from 'net'
 import os from 'os'
 import { promisify } from 'util'
+import { APP_NAME } from '../shared/branding.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -200,7 +201,7 @@ public static class RawPrinter {
 
     IntPtr unmanagedBytes = IntPtr.Zero;
     try {
-      var docInfo = new DOCINFOA { pDocName = "Label Maker Raw Label", pDataType = "RAW" };
+      var docInfo = new DOCINFOA { pDocName = "${APP_NAME} Raw Label", pDataType = "RAW" };
       if (!StartDocPrinter(printerHandle, 1, docInfo)) {
         throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not start print job.");
       }

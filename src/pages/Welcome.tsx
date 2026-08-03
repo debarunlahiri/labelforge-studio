@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import appLogoUrl from '../assets/app_logo.png'
 import { useTemplateStore } from '../store/templateStore'
+import { APP_NAME, APP_TEMPLATE_NAME } from '../../shared/branding'
 
 const navigation = [
   { label: 'Dashboard', path: '/app/dashboard', icon: dashboardIcon },
@@ -67,10 +68,10 @@ export default function Welcome() {
     setIsOpening(true)
     try {
       const result = await window.electronAPI?.app.selectFile({
-        title: 'Open Label Maker Template',
+        title: `Open ${APP_TEMPLATE_NAME}`,
         filters: [
-          { name: 'Label Maker Template', extensions: ['lfx'] },
-          { name: 'Legacy Label Maker JSON', extensions: ['lfx.json'] },
+          { name: APP_TEMPLATE_NAME, extensions: ['lfx'] },
+          { name: `Legacy ${APP_NAME} JSON`, extensions: ['lfx.json'] },
           { name: 'JSON', extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] },
         ],
@@ -108,8 +109,8 @@ export default function Welcome() {
       {/* Top navigation */}
       <header className="flex items-center justify-between border-b border-slate-700/50 bg-slate-900/50 px-6 py-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <img src={appLogoUrl} alt="Label Maker" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
-          <span className="text-lg font-bold text-white">Label Maker</span>
+          <img src={appLogoUrl} alt={APP_NAME} className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-blue-600/20" />
+          <span className="text-lg font-bold text-white">{APP_NAME}</span>
         </div>
         <nav className="hidden items-center gap-1 md:flex">
           {navigation.map((item) => (
@@ -228,7 +229,7 @@ export default function Welcome() {
 
           {/* Footer */}
           <div className="mt-10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
-            <div>Label Maker</div>
+            <div>{APP_NAME}</div>
             <div className="flex gap-4">
               <button onClick={() => navigate('/app/settings')} className="hover:text-slate-300">Settings</button>
               <button onClick={() => navigate('/app/printers')} className="hover:text-slate-300">Printers</button>

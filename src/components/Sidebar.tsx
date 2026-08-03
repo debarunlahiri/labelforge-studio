@@ -17,6 +17,7 @@ import {
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import appLogoUrl from '../assets/app_logo.png'
 import { useTemplateStore } from '../store/templateStore'
+import { APP_NAME } from '../../shared/branding'
 
 type MenuItem = { path: string; label: string; description: string; icon: IconDefinition }
 
@@ -30,7 +31,7 @@ const printerItems: MenuItem[] = [
 ]
 
 const helpItems: MenuItem[] = [
-  { path: '/app/help?section=getting-started', label: 'Getting Started', description: 'Learn the Label Maker workflow', icon: faBookOpen },
+  { path: '/app/help?section=getting-started', label: 'Getting Started', description: `Learn the ${APP_NAME} workflow`, icon: faBookOpen },
   { path: '/app/help?section=designer', label: 'Template Designer', description: 'Create and edit label designs', icon: faTags },
   { path: '/app/help?section=printing', label: 'Printing & Printers', description: 'Prepare and send print jobs', icon: faPrint },
   { path: '/app/help?section=shortcuts', label: 'Keyboard Shortcuts', description: 'View shortcuts for your OS', icon: faKeyboard },
@@ -154,9 +155,9 @@ export default function Sidebar() {
         className="flex h-12 shrink-0 items-center gap-3 border-r border-slate-800 pr-5 text-left"
         onClick={() => navigate('/')}
       >
-        <img src={appLogoUrl} alt="Label Maker" className="h-9 w-9 rounded-lg object-cover shadow-lg shadow-blue-950/30" />
+        <img src={appLogoUrl} alt={APP_NAME} className="h-9 w-9 rounded-lg object-cover shadow-lg shadow-blue-950/30" />
         <div className="flex flex-col">
-          <span className="text-sm font-semibold text-white">Label Maker</span>
+          <span className="text-sm font-semibold text-white">{APP_NAME}</span>
         </div>
       </button>
 
