@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'url'
 import path from 'path'
 import fs from 'fs'
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { initDatabase, closeDatabase } from './database/db.js'
 import { registerIpcHandlers } from './ipc/index.js'
 import { APP_NAME } from '../shared/branding.js'
@@ -62,6 +62,8 @@ function writeStartupLog(message: string, error?: unknown) {
 
 function createWindow() {
   let rendererReady = false
+  const isProduction = app.isPackaged
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -73,10 +75,28 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !isProduction,
     },
     frame: true,
     show: false,
   })
+
+  if (isProduction) {
+    Menu.setApplicationMenu(null)
+    mainWindow.removeMenu()
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow?.webContents.closeDevTools()
+    })
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      const isDevToolsShortcut =
+        input.key === 'F12' ||
+        ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i')
+
+      if (isDevToolsShortcut) {
+        event.preventDefault()
+      }
+    })
+  }
 
   mainWindow.once('ready-to-show', () => {
     rendererReady = true
@@ -112,7 +132,7 @@ function createWindow() {
     }
   }, 10_000)
 
-  if (process.env.VITE_DEV_SERVER_URL) {
+  if (!isProduction && process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
     mainWindow.webContents.openDevTools()
   } else {
