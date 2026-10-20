@@ -2,6 +2,10 @@
   "name": "labelforge-studio",
   "private": true,
   "version": "1.0.0",
+  "description": "Label design, barcode creation, and local print management software.",
+  "author": {
+    "name": "Samsung Display Noida"
+  },
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -47,6 +51,10 @@
       }
     ],
     "win": {
+      "signtoolOptions": {
+        "publisherName": "Samsung Display Noida"
+      },
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -63,6 +71,8 @@
       ]
     },
     "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
@@ -71,7 +81,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"

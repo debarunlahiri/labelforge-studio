@@ -601,8 +601,26 @@ After `npm run build`, the project produces:
 After desktop package builds, electron-builder writes packages to `dist/`:
 
 - macOS offline ZIP: `dist/LabelForge Studio-1.0.0-arm64-mac.zip`
-- Windows installer: `dist/LabelForge Studio Setup 1.0.0.exe`
-- Windows portable app: `dist/LabelForge Studio 1.0.0.exe`
+- Windows installer: `dist/Label Studio-Setup-1.0.0-x64.exe`
+- Windows standalone uninstaller: `dist/Label Studio-Setup-1.0.0-x64.exe.uninstaller.exe`
+- Windows portable app: `dist/Label Studio-Portable-1.0.0-x64.exe`
+
+Run `npm run electron:build:win` to generate the Windows packages and separate
+uninstaller together. Keep the setup and uninstaller from the same release.
+The separate uninstaller uses the registered installation folder, so it can be
+launched from Downloads by the Windows user who installed the application. It
+refuses to proceed when the registered application cannot be found. Local app
+data is retained by default, just as with the Control Panel uninstaller.
+
+The NSIS customization disables the CRC self-check for the uninstaller build
+only, as a workaround for the reported uninstall integrity error. The setup
+retains its integrity check. For an existing installation with a broken
+uninstaller, try the new separate uninstaller as the original Windows user.
+Reinstalling the new setup into the same folder also replaces the installed
+uninstaller, provided the old installation allows the upgrade to proceed.
+Windows install, Control Panel uninstall, and standalone uninstall still need
+to be verified on Windows; configuration changes alone do not prove the
+reported error is resolved.
 
 ## License
 
